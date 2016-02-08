@@ -52,4 +52,8 @@ gm_param_bp_thres = 0.01              # stopping threshold
 GM_EGONET = "GM_EGONET"
 
 
+# phase 1: coreness of nodes
+GM_NODE_CORENESS = "GM_NODE_CORENESS"
+GM_DEGENERACY = "GM_DEGENERACY"
+GM_CORENESS_DISTRIBUTION = "GM_CORENESS_DISTRIBUTION"
 

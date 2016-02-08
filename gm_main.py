@@ -56,6 +56,14 @@ def gm_save_tables (dest_dir, belief):
 
     gm_sql_save_table_to_file(db_conn, GM_NODE_DEGREES, "node_id, in_degree, out_degree", \
                                   os.path.join(dest_dir,"degree.csv"), ",");
+    
+    # phase 1 tables
+    gm_sql_save_table_to_file(db_conn, GM_NODE_CORENESS, "node_id, coreness", \
+                                  os.path.join(dest_dir,"coreness.csv"), ",");
+    gm_sql_save_table_to_file(db_conn, GM_DEGENERACY, "degeneracy", \
+                                  os.path.join(dest_dir,"degeneracy.csv"), ",");
+    gm_sql_save_table_to_file(db_conn, GM_CORENESS_DISTRIBUTION, "coreness, count", \
+                                  os.path.join(dest_dir,"corenessdist.csv"), ",");
 
     gm_sql_save_table_to_file(db_conn, GM_PAGERANK, "node_id, page_rank", \
                                   os.path.join(dest_dir,"pagerank.csv"), ",");
@@ -793,6 +801,100 @@ def gm_anomaly_detection():
     print "Time taken = " + str(time.time()-start_time)     
     
 
+# Phase 1: coreness of nodes
+#-----------------------------------------------------------------------------#
+def gm_node_coreness():
+    cur = db_conn.cursor()    
+    
+    # Create Table to store node coreness
+    print "Computing Node coreness..."
+    gm_sql_table_drop_create(db_conn, GM_NODE_CORENESS, "node_id integer, \
+                                                         coreness integer")
+    
+    gm_sql_table_drop_create(db_conn, "DEG_SORTED", "node_id integer, \
+                                                     in_degree integer")
+    cur.execute("INSERT INTO %s" % "DEG_SORTED" +
+                " SELECT node_id, in_degree FROM %s" % GM_NODE_DEGREES +
+                " ORDER BY in_degree ASC")
+    
+    cur.execute("SELECT node_id, in_degree FROM %s" % "DEG_SORTED")
+    all_nodes = cur.fetchall()
+    num_nodes = len(all_nodes)
+    for ind in xrange(num_nodes):
+        node = all_nodes[ind]
+        # core[node_id] = degree[node_id]
+        cur.execute("INSERT INTO %s" % GM_NODE_CORENESS +
+                    " SELECT node_id, in_degree AS coreness FROM %s"
+                    % "DEG_SORTED" +
+                    " WHERE node_id = %s" % str(node[0]))
+        
+        # neighbors
+        cur.execute(" SELECT dst_id FROM %s" % GM_TABLE +
+                    " WHERE src_id = %s"
+                    " GROUP BY dst_id" % str(node[0]))
+        all_neighbors = cur.fetchall()
+        for neighbor in all_neighbors:
+            # degree_v
+            cur.execute(" SELECT in_degree FROM %s" % "DEG_SORTED" +
+                        " WHERE node_id = %s" % str(node[0]))
+            degree_node = cur.fetchone()[0]
+            
+            # degree_u
+            cur.execute(" SELECT in_degree FROM %s" % "DEG_SORTED" +
+                        " WHERE node_id = %s" % str(neighbor[0]))
+            degree_neighbor = cur.fetchone()[0]
+            if degree_neighbor > degree_node:
+                cur.execute(" SELECT node_id FROM %s" % "DEG_SORTED" +
+                            " WHERE in_degree = %s" % str(degree_neighbor))
+                swap_with = cur.fetchone()
+                if neighbor[0] != swap_with[0]:
+                    cur.execute(" UPDATE %s" % "DEG_SORTED" +
+                                " SET node_id = CASE "
+                                " WHEN node_id = %s" % str(neighbor[0]) +
+                                " THEN %s" % str(swap_with[0]) +
+                                " ELSE %s END" % str(neighbor[0]) +
+                                " WHERE node_id IN (%s," % str(neighbor[0]) +
+                                " %s)" % str(swap_with[0]))
+                cur.execute(" UPDATE %s" % "DEG_SORTED" +
+                            " SET in_degree = %s" % str(degree_neighbor - 1) +
+                            " WHERE node_id = %s" % str(neighbor[0]))
+    gm_sql_table_drop(db_conn, "DEG_SORTED")
+    db_conn.commit()
+    cur.close()
+
+
+
+# Phase 1: distribution of coreness
+#-----------------------------------------------------------------------------#
+def gm_coreness_distribution():
+    
+    cur = db_conn.cursor()
+    print "Computing Coreness distribution of the nodes..."
+    
+    gm_sql_table_drop_create(db_conn, GM_CORENESS_DISTRIBUTION, "coreness integer, count integer")
+    
+    cur.execute ("INSERT INTO %s" % GM_CORENESS_DISTRIBUTION +
+                 " SELECT coreness \"coreness\", count(*) FROM %s" % (GM_NODE_CORENESS) +
+                 " GROUP BY coreness");
+    
+    db_conn.commit()                        
+    cur.close()
+
+
+
+# Phase 1: degeneracy of the graph
+#-----------------------------------------------------------------------------#
+def gm_coreness_distribution():
+    
+    cur = db_conn.cursor()
+    print "Computing degeneracy of the graph..."
+    gm_sql_table_drop_create(db_conn, GM_DEGENERACY, "degeneracy integer")
+    cur.execute ("INSERT INTO %s" % GM_DEGENERACY +
+                 " SELECT MAX(coreness) AS degeneracy FROM %s" % GM_NODE_CORENESS);
+    db_conn.commit()                        
+    cur.close()
+
+
 
 def main():
     global db_conn
@@ -860,6 +962,10 @@ def main():
         gm_node_degrees()
         
         # Tasks
+        # phase 1: coreness of nodes
+        gm_node_coreness()
+        gm_coreness_distribution()
+        
         gm_degree_distribution(args.undirected)                 # Degree distribution
         
         gm_pagerank(num_nodes)                                  # Pagerank
