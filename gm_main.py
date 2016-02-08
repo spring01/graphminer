@@ -863,6 +863,70 @@ def gm_node_coreness():
     cur.close()
 
 
+# Phase 1: coreness of nodes
+#-----------------------------------------------------------------------------#
+def gm_node_coreness_slow():
+    cur = db_conn.cursor()    
+    
+    # Create Table to store node coreness
+    print "Computing Node coreness..."
+    gm_sql_table_drop_create(db_conn, GM_NODE_CORENESS, "node_id integer, \
+                                                         coreness integer")
+    gm_sql_table_drop_create(db_conn, "DEG_SORTED_BKUP",
+                                      "node_id integer, in_degree integer")
+    gm_sql_table_drop_create(db_conn, "DEG_SORTED", "node_id integer, \
+                                                     in_degree integer")
+    cur.execute("INSERT INTO %s" % "DEG_SORTED" +
+                " SELECT node_id, in_degree FROM %s" % GM_NODE_DEGREES +
+                " ORDER BY in_degree ASC")
+    
+    cur.execute("SELECT node_id, in_degree FROM %s" % "DEG_SORTED")
+    all_nodes = cur.fetchall()
+    num_nodes = len(all_nodes)
+    for ind in xrange(num_nodes):
+        node = all_nodes[ind]
+        # core[node_id] = degree[node_id]
+        cur.execute("INSERT INTO %s" % GM_NODE_CORENESS +
+                    " SELECT node_id, in_degree AS coreness FROM %s"
+                    % "DEG_SORTED" +
+                    " WHERE node_id = %s" % str(node[0]))
+        
+        # neighbors
+        cur.execute(" SELECT dst_id FROM %s" % GM_TABLE +
+                    " WHERE src_id = %s"
+                    " GROUP BY dst_id" % str(node[0]))
+        all_neighbors = cur.fetchall()
+        for neighbor in all_neighbors:
+            # degree_v
+            cur.execute(" SELECT in_degree FROM %s" % "DEG_SORTED" +
+                        " WHERE node_id = %s" % str(node[0]))
+            degree_node = cur.fetchone()[0]
+            
+            # degree_u
+            cur.execute(" SELECT in_degree FROM %s" % "DEG_SORTED" +
+                        " WHERE node_id = %s" % str(neighbor[0]))
+            degree_neighbor = cur.fetchone()[0]
+            if degree_neighbor > degree_node:
+                cur.execute(" UPDATE %s" % "DEG_SORTED" +
+                            " SET in_degree = %s" % str(degree_neighbor - 1) +
+                            " WHERE node_id = %s" % str(neighbor[0]))
+                gm_sql_table_drop_create(db_conn, "DEG_SORTED_BKUP",
+                                         "node_id integer, in_degree integer")
+                cur.execute("INSERT INTO %s" % "DEG_SORTED_BKUP" +
+                            " SELECT node_id, in_degree FROM %s" % "DEG_SORTED")
+                cur.execute("ALTER TABLE %s ADD sort_id SERIAL" % "DEG_SORTED_BKUP")
+                cur.execute("ALTER TABLE %s ADD PRIMARY KEY (sort_id)" % "DEG_SORTED_BKUP")
+                gm_sql_table_drop_create(db_conn, "DEG_SORTED",
+                                         "node_id integer, in_degree integer")
+                cur.execute("INSERT INTO %s" % "DEG_SORTED" +
+                            " SELECT node_id, in_degree FROM %s" % "DEG_SORTED_BKUP" +
+                            " ORDER BY in_degree ASC, sort_id ASC")
+                cur.execute("SELECT node_id, in_degree FROM %s" % "DEG_SORTED")
+                all_nodes = cur.fetchall()
+    gm_sql_table_drop(db_conn, "DEG_SORTED")
+    db_conn.commit()
+    cur.close()
+
 
 # Phase 1: distribution of coreness
 #-----------------------------------------------------------------------------#
@@ -963,21 +1027,21 @@ def main():
         
         # Tasks
         # phase 1: coreness of nodes
-        gm_node_coreness()
+        gm_node_coreness_slow()
         gm_coreness_distribution()
         
         gm_degree_distribution(args.undirected)                 # Degree distribution
         
-        gm_pagerank(num_nodes)                                  # Pagerank
-        gm_connected_components(num_nodes)                      # Connected components
-        gm_eigen(gm_param_eig_max_iter, num_nodes, gm_param_eig_thres1, gm_param_eig_thres2)    
-        gm_all_radius(num_nodes)     
-        if (args.belief_file):
-            gm_belief_propagation(args.belief_file, args.delimiter, args.undirected)
+        #~ gm_pagerank(num_nodes)                                  # Pagerank
+        #~ gm_connected_components(num_nodes)                      # Connected components
+        #~ gm_eigen(gm_param_eig_max_iter, num_nodes, gm_param_eig_thres1, gm_param_eig_thres2)    
+        #~ gm_all_radius(num_nodes)     
+        #~ if (args.belief_file):
+            #~ gm_belief_propagation(args.belief_file, args.delimiter, args.undirected)
         
         
-        gm_eigen_triangle_count()
-        #gm_naive_triangle_count()
+        #~ gm_eigen_triangle_count()
+        #~ #gm_naive_triangle_count()
 
         # Save tables to disk
         gm_save_tables(args.dest_dir, args.belief_file)
