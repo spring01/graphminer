@@ -940,10 +940,14 @@ def gm_node_coreness_wiki():
                     " WHERE node_id = %s" % str(vertex))
         
         # For each neighbor w of v not already in L
-        cur.execute(" SELECT dst_id FROM %s" % GM_TABLE +
-                    " WHERE src_id = %s" % str(vertex) +
-                    " AND dst_id NOT IN (SELECT node_id AS dst_id FROM %s)" % GM_NODE_CORENESS +
-                    " GROUP BY dst_id")
+        #~ cur.execute(" SELECT dst_id FROM %s" % GM_TABLE +
+                    #~ " WHERE src_id = %s" % str(vertex) +
+                    #~ " AND dst_id NOT IN (SELECT node_id AS dst_id FROM %s)" % GM_NODE_CORENESS +
+                    #~ " GROUP BY dst_id")
+        cur.execute(" SELECT node_id FROM %s" % GM_NODES +
+                    " WHERE node_id NOT IN (SELECT node_id FROM %s)" % GM_NODE_CORENESS +
+                    " AND node_id IN (SELECT dst_id AS node_id FROM %s" % GM_TABLE +
+                    " WHERE src_id = %s)" % str(vertex))
         all_neighbors = cur.fetchall()
         
         for neighbor in all_neighbors:

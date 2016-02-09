@@ -13,6 +13,11 @@ run_slash:
 test:    
 	chmod a+rwx `pwd`
 	python gm_main.py --file `pwd`/unittest1_0.txt --dest_dir `pwd`/output --unweighted --undirected
+	python gm_main.py --file `pwd`/unittest1.txt --dest_dir `pwd`/output --unweighted --undirected
+	python gm_main.py --file `pwd`/unittest2.txt --dest_dir `pwd`/output --unweighted --undirected
+	python gm_main.py --file `pwd`/unittest3.txt --dest_dir `pwd`/output --unweighted --undirected
+	python gm_main.py --file `pwd`/unittest4.txt --dest_dir `pwd`/output --unweighted --undirected
+	python gm_main.py --file `pwd`/unittest5.txt --dest_dir `pwd`/output --unweighted --undirected
 
 install:
 	sudo apt-get install python-psycopg2
