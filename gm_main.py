@@ -896,7 +896,7 @@ def gm_node_coreness_wiki():
     cur.execute("SELECT MAX(in_degree) FROM %s" % "TMP_DEG")
     max_degree = cur.fetchone()[0]
     for degree in xrange(max_degree + 1):
-        table_name = "LIST_D%s" % str(degree)
+        table_name = "TMP_LIST_D%s" % str(degree)
         gm_sql_table_drop_create(db_conn, table_name, "node_id integer")
         cur.execute("INSERT INTO %s" % table_name +
                     " SELECT node_id FROM %s" % "TMP_DEG" +
@@ -909,11 +909,12 @@ def gm_node_coreness_wiki():
     
     # Repeat n times:
     for i in xrange(num_nodes):
+        print "%s" % (i + 1) + " out of %s" % num_nodes
         # Scan the array cells D[0], D[1], ...
         # until finding an i for which D[i] is nonempty.
         curr_degree = -1
         for degree in xrange(max_degree + 1):
-            table_name = "LIST_D%s" % str(degree)
+            table_name = "TMP_LIST_D%s" % str(degree)
             cur.execute("SELECT COUNT(*) FROM %s" % table_name)
             if cur.fetchone()[0] != 0:
                 curr_degree = degree
@@ -945,8 +946,6 @@ def gm_node_coreness_wiki():
                     " GROUP BY dst_id")
         all_neighbors = cur.fetchall()
         
-        cur.execute(" SELECT * FROM %s" % "TMP_DEG")
-        
         for neighbor in all_neighbors:
             # subtract one from dw
             cur.execute(" SELECT in_degree" +
@@ -960,16 +959,22 @@ def gm_node_coreness_wiki():
                             " WHERE node_id = %s" % str(neighbor[0]))
                 
                 # move w to the cell of D corresponding to the new value of dw
-                add_table_name = "LIST_D%s" % str(neighbor_degree - 1)
+                add_table_name = "TMP_LIST_D%s" % str(neighbor_degree - 1)
                 cur.execute("INSERT INTO %s" % add_table_name +
                             " SELECT node_id" +
                             " FROM %s" % "TMP_DEG" +
                             " WHERE node_id = %s" % str(neighbor[0]))
-                del_table_name = "LIST_D%s" % str(neighbor_degree)
+                del_table_name = "TMP_LIST_D%s" % str(neighbor_degree)
                 cur.execute("DELETE FROM %s" % del_table_name +
                             " WHERE node_id = %s" % str(neighbor[0]))
         
         cur.execute(" SELECT * FROM %s" % "TMP_DEG")
+    gm_sql_table_drop(db_conn, "TMP_DEG")
+    #~ for degree in xrange(max_degree + 1):
+        #~ table_name = "TMP_LIST_D%s" % str(degree)
+        #~ gm_sql_table_drop(db_conn, table_name)
+    
+    print "Degeneracy appears to be %s" % k
     
     db_conn.commit()
     cur.close()

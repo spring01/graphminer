@@ -4,7 +4,11 @@ all:
 
 run_epi:    
 	chmod a+rwx `pwd`
-	python gm_main.py --file `pwd`/../datafiles/soc-Epinions1-nosharp.txt --dest_dir `pwd`/output_epi --unweighted --undirected > running_epi &
+	python gm_main.py --file `pwd`/../datafiles/soc-Epinions1-nosharp.txt --dest_dir `pwd`/output_epi --unweighted --undirected
+
+run_slash:    
+	chmod a+rwx `pwd`
+	python gm_main.py --file `pwd`/../datafiles/soc-Slashdot0811-nosharp.txt --dest_dir `pwd`/output_slash --unweighted --undirected
 
 test:    
 	chmod a+rwx `pwd`
