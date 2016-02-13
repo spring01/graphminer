@@ -40,6 +40,6 @@ all.tar:
 	tar -zcvf graphminer.tar.gz *.txt makefile *.py matlab output doc
 
 clean:
-	rm *.pyc output output_unittest* -r
+	rm -rf *.pyc output/*
 
 
