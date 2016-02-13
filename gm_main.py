@@ -68,9 +68,9 @@ def gm_save_tables (dest_dir, belief):
     #~ gm_sql_save_table_to_file(db_conn, GM_PAGERANK, "node_id, page_rank", \
                                   #~ os.path.join(dest_dir,"pagerank.csv"), ",");
                                   #~ 
-#~ 
-    #~ gm_sql_save_table_to_file(db_conn, GM_CON_COMP, "node_id, component_id", \
-                                  #~ os.path.join(dest_dir,"conncomp.csv"), ",");                               
+
+    gm_sql_save_table_to_file(db_conn, GM_CON_COMP, "node_id, component_id", \
+                                  os.path.join(dest_dir,"conncomp.csv"), ",");                               
 #~ 
     #~ gm_sql_save_table_to_file(db_conn, GM_RADIUS, "node_id, radius", \
                                   #~ os.path.join(dest_dir,"radius.csv"), ",");         
@@ -801,270 +801,85 @@ def gm_anomaly_detection():
     print "Time taken = " + str(time.time()-start_time)
 
 
-# Phase 1: coreness of nodes -- slow version
-#-----------------------------------------------------------------------------#
-def gm_node_coreness_slow():
+# Phase 1: coreness of nodes
+#----------------------------------------------------------------------#
+def gm_node_coreness():
     cur = db_conn.cursor()    
     
     # Create Table to store node coreness
     print "Computing Node coreness..."
-    gm_sql_table_drop_create(db_conn, GM_NODE_CORENESS, "node_id integer, \
-                                                         coreness integer")
-    gm_sql_table_drop_create(db_conn, "DEG_SORTED_BKUP",
-                                      "sort_id integer, node_id integer, in_degree integer")
-    gm_sql_table_drop_create(db_conn, "DEG_SORTED", "node_id integer, \
-                                                     in_degree integer")
-    cur.execute("INSERT INTO %s" % "DEG_SORTED" +
-                " SELECT node_id, in_degree FROM %s" % GM_NODE_DEGREES +
-                " ORDER BY in_degree ASC")
-    
-    cur.execute("SELECT node_id, in_degree FROM %s" % "DEG_SORTED")
-    all_nodes = cur.fetchall()
-    num_nodes = len(all_nodes)
-    for ind in xrange(num_nodes):
-        node = all_nodes[ind]
-        # core[node_id] = degree[node_id]
-        cur.execute("INSERT INTO %s" % GM_NODE_CORENESS +
-                    " SELECT node_id, in_degree AS coreness FROM %s"
-                    % "DEG_SORTED" +
-                    " WHERE node_id = %s" % str(node[0]))
-        
-        # degree_v
-        cur.execute(" SELECT in_degree FROM %s" % "DEG_SORTED" +
-                    " WHERE node_id = %s" % str(node[0]))
-        degree_node = cur.fetchone()[0]
-        
-        # neighbors
-        cur.execute(" SELECT dst_id FROM %s" % GM_TABLE +
-                    " WHERE src_id = %s"
-                    " GROUP BY dst_id" % str(node[0]))
-        all_neighbors = cur.fetchall()
-        reorder = False
-        for neighbor in all_neighbors:
-            # degree_u
-            cur.execute(" SELECT in_degree FROM %s" % "DEG_SORTED" +
-                        " WHERE node_id = %s" % str(neighbor[0]))
-            degree_neighbor = cur.fetchone()[0]
-            if degree_neighbor > degree_node:
-                reorder = True
-                cur.execute(" UPDATE %s" % "DEG_SORTED" +
-                            " SET in_degree = %s" % str(degree_neighbor - 1) +
-                            " WHERE node_id = %s" % str(neighbor[0]))
-        if reorder:
-            gm_sql_table_drop_create(db_conn, "DEG_SORTED_BKUP",
-                                     "node_id integer, in_degree integer")
-            cur.execute("INSERT INTO %s" % "DEG_SORTED_BKUP" +
-                        " SELECT node_id, in_degree FROM %s" % "DEG_SORTED")
-            cur.execute("ALTER TABLE %s ADD sort_id SERIAL" % "DEG_SORTED_BKUP")
-            cur.execute("ALTER TABLE %s ADD PRIMARY KEY (sort_id)" % "DEG_SORTED_BKUP")
-            gm_sql_table_drop_create(db_conn, "DEG_SORTED",
-                                     "node_id integer, in_degree integer")
-            cur.execute("INSERT INTO %s" % "DEG_SORTED" +
-                        " SELECT node_id, in_degree FROM %s" % "DEG_SORTED_BKUP" +
-                        " ORDER BY in_degree ASC, sort_id ASC")
-            cur.execute("SELECT node_id, in_degree FROM %s" % "DEG_SORTED")
-            all_nodes = cur.fetchall()
-    gm_sql_table_drop(db_conn, "DEG_SORTED")
-    db_conn.commit()
-    cur.close()
-
-
-# Phase 1: coreness of nodes -- wiki version
-#-----------------------------------------------------------------------------#
-def gm_node_coreness_wiki():
-    cur = db_conn.cursor()    
-    
-    # Create Table to store node coreness
-    print "Computing Node coreness..."
-    cur.execute("SELECT COUNT(*) FROM %s" % GM_NODES)
-    num_nodes = cur.fetchone()[0]
-    
     # Initialize an output list L.
-    gm_sql_table_drop_create(db_conn, GM_NODE_CORENESS, "node_id integer, \
-                                                         coreness integer")
+    list_L = []
     
-    # Compute a number dv for each vertex v in G, the number of neighbors of v
-    # that are not already in L.
+    # Compute a number dv for each vertex v in G,
+    # the number of neighbors of v that are not already in L.
     # Initially, these numbers are just the degrees of the vertices.
-    gm_sql_table_drop_create(db_conn, "TMP_DEG", "node_id integer, \
-                                                  in_degree integer")
-    cur.execute("INSERT INTO %s" % "TMP_DEG" +
-                " SELECT node_id, in_degree FROM %s" % GM_NODE_DEGREES)
+    cur.execute("SELECT node_id, in_degree FROM %s" % GM_NODE_DEGREES)
+    node_degree = dict(cur.fetchall())
     
-    # Initialize an array D such that D[i] contains a list of the vertices v
-    # that are not already in L for which dv = i.
-    cur.execute("SELECT MAX(in_degree) FROM %s" % "TMP_DEG")
+    # Initialize an array D such that D[i] contains a list of
+    # the vertices v that are not already in L for which dv = i.
+    cur.execute("SELECT in_degree, ARRAY_AGG(node_id)" +
+                " FROM %s" % GM_NODE_DEGREES +
+                " GROUP BY in_degree")
+    list_D = dict(cur.fetchall())
+    
+    cur.execute("SELECT MAX(in_degree) FROM %s" % GM_NODE_DEGREES)
     max_degree = cur.fetchone()[0]
     for degree in xrange(max_degree + 1):
-        table_name = "TMP_LIST_D%s" % str(degree)
-        gm_sql_table_drop_create(db_conn, table_name, "node_id integer")
-        cur.execute("INSERT INTO %s" % table_name +
-                    " SELECT node_id FROM %s" % "TMP_DEG" +
-                    " WHERE in_degree = %s" % str(degree))
+        if degree not in list_D:
+            list_D[degree] = []
     
     # Initialize k to 0.
-    k = 0
+    degeneracy = 0
     
-    cur.execute(" SELECT * FROM %s" % "TMP_DEG")
+    cur.execute("SELECT src_id AS node_id, ARRAY_AGG(dst_id)" +
+                " FROM %s" % GM_TABLE +
+                " GROUP BY src_id")
+    adj_list = dict(cur.fetchall())
     
+    num_nodes = len(node_degree)
     # Repeat n times:
-    for i in xrange(num_nodes):
-        print "%s" % (i + 1) + " out of %s" % num_nodes
+    for _ in xrange(num_nodes):
         # Scan the array cells D[0], D[1], ...
         # until finding an i for which D[i] is nonempty.
-        curr_degree = -1
-        for degree in xrange(max_degree + 1):
-            table_name = "TMP_LIST_D%s" % str(degree)
-            cur.execute("SELECT COUNT(*) FROM %s" % table_name)
-            if cur.fetchone()[0] != 0:
-                curr_degree = degree
+        # Select a vertex v from D[i].
+        for degree, vertices in list_D.iteritems():
+            if len(vertices) != 0:
+                vertex = vertices.pop()
                 break
         
         # Set k to max(k,i)
-        k = max(k, curr_degree)
+        degeneracy = max(degeneracy, degree)
         
-        # Select a vertex v from D[i].
         # Add v to the beginning of L and remove it from D[i].
-        cur.execute("SELECT node_id FROM %s" % table_name)
-        vertex = cur.fetchone()[0]
-        
-        cur.execute("SELECT in_degree FROM %s" % "TMP_DEG" +
-                    " WHERE node_id = %s" % str(vertex))
-        vertex_degree = cur.fetchone()[0]
-        
-        cur.execute("INSERT INTO %s" % GM_NODE_CORENESS +
-                    " SELECT node_id, in_degree AS coreness" +
-                    " FROM %s" % "TMP_DEG" +
-                    " WHERE node_id = %s" % str(vertex))
-        cur.execute("DELETE FROM %s" % table_name +
-                    " WHERE node_id = %s" % str(vertex))
+        list_L.insert(0, (vertex, degree))
         
         # For each neighbor w of v not already in L
-        #~ cur.execute(" SELECT dst_id FROM %s" % GM_TABLE +
-                    #~ " WHERE src_id = %s" % str(vertex) +
-                    #~ " AND dst_id NOT IN (SELECT node_id AS dst_id FROM %s)" % GM_NODE_CORENESS +
-                    #~ " GROUP BY dst_id")
-        cur.execute(" SELECT node_id FROM %s" % GM_NODES +
-                    " WHERE node_id NOT IN (SELECT node_id FROM %s)" % GM_NODE_CORENESS +
-                    " AND node_id IN (SELECT dst_id AS node_id FROM %s" % GM_TABLE +
-                    " WHERE src_id = %s)" % str(vertex))
-        all_neighbors = cur.fetchall()
-        
-        for neighbor in all_neighbors:
-            # subtract one from dw
-            cur.execute(" SELECT in_degree" +
-                        " FROM %s" % "TMP_DEG" +
-                        " WHERE node_id = %s" % str(neighbor[0]))
-            neighbor_degree = cur.fetchone()[0]
-            
-            if neighbor_degree > vertex_degree:
-                cur.execute(" UPDATE %s" % "TMP_DEG" +
-                            " SET in_degree = %s" % str(neighbor_degree - 1) +
-                            " WHERE node_id = %s" % str(neighbor[0]))
+        for neighbor in adj_list[vertex]:
+            neighbor_degree = node_degree[neighbor]
+            if neighbor_degree > degree:
+                # subtract one from dw
+                node_degree[neighbor] -= 1
                 
-                # move w to the cell of D corresponding to the new value of dw
-                add_table_name = "TMP_LIST_D%s" % str(neighbor_degree - 1)
-                cur.execute("INSERT INTO %s" % add_table_name +
-                            " SELECT node_id" +
-                            " FROM %s" % "TMP_DEG" +
-                            " WHERE node_id = %s" % str(neighbor[0]))
-                del_table_name = "TMP_LIST_D%s" % str(neighbor_degree)
-                cur.execute("DELETE FROM %s" % del_table_name +
-                            " WHERE node_id = %s" % str(neighbor[0]))
-        
-        cur.execute(" SELECT * FROM %s" % "TMP_DEG")
-    gm_sql_table_drop(db_conn, "TMP_DEG")
-    #~ for degree in xrange(max_degree + 1):
-        #~ table_name = "TMP_LIST_D%s" % str(degree)
-        #~ gm_sql_table_drop(db_conn, table_name)
-    
-    print "Degeneracy appears to be %s" % k
-    
-    db_conn.commit()
-    cur.close()
-
-
-# Phase 1: coreness of nodes -- copy version
-#-----------------------------------------------------------------------------#
-def gm_node_coreness_copy():
-    cur = db_conn.cursor()    
-    
-    # Create Table to store node coreness
-    print "Computing Node coreness..."
+                # move w to the cell of D corresponding to
+                # the new value of dw
+                list_D[neighbor_degree - 1].insert(0, neighbor)
+                list_D[neighbor_degree].remove(neighbor)
+    print "Degeneracy appears to be %s" % degeneracy
     gm_sql_table_drop_create(db_conn, GM_NODE_CORENESS,
-                             "node_id integer, coreness integer")
-    cur.execute("SELECT COUNT(*) FROM %s" % GM_NODES)
-    n = cur.fetchone()[0]
+                            "node_id integer, coreness integer")
+    cur.execute("INSERT INTO %s" % GM_NODE_CORENESS +
+                " VALUES %s" % str(list_L).replace('[','').replace(']',''))
     
-    cur.execute("SELECT MIN(node_id) FROM %s" % GM_NODE_DEGREES)
-    node_id_start = cur.fetchone()[0]
-    if node_id_start == 0:
-        cur.execute("SELECT node_id, in_degree FROM %s" % GM_NODE_DEGREES)
-        result = cur.fetchall()
-        deg = [0] * (n + 1)
-        for i in xrange(n):
-            deg[result[i][0] + 1] = (result[i][1], )
-    elif node_id_start == 1:
-        cur.execute("SELECT in_degree FROM %s" % GM_NODE_DEGREES)
-        deg = cur.fetchall()
-        deg.insert(0, 0)
-    
-    cur.execute("SELECT MAX(in_degree) FROM %s" % GM_NODE_DEGREES)
-    md = cur.fetchone()[0]
-    
-    cur.execute("SELECT in_degree, COUNT(in_degree) FROM %s" % GM_NODE_DEGREES +
-                " GROUP BY in_degree")
-    result = cur.fetchall()
-    bin = [0] * (md + 1)
-    for v in xrange(1, n + 1):
-        bin[deg[v][0]] += 1
-    
-    #~ for d in xrange(len(result)):
-        #~ bin[result[d][0]] = result[d][1]
-    #~ print bin
-    
-    start = 1
-    for d in xrange(md + 1):
-        num = bin[d]
-        bin[d] = start
-        start += num
-    
-    pos = [0] * (n + 1)
-    vert = [0] * (n + 1)
-    for v in xrange(1, n + 1):
-        pos[v] = bin[deg[v][0]]
-        vert[pos[v]] = v
-        bin[deg[v][0]] += 1
-    
-    for d in xrange(md, 0, -1):
-        bin[d] = bin[d - 1]
-    bin[0] = 1
-    
-    for i in xrange(1, n + 1):
-        v = vert[i]
-        # neighbors
-        cur.execute(" SELECT dst_id FROM %s" % GM_TABLE +
-                    " WHERE src_id = %s"
-                    " GROUP BY dst_id" % str(v))
-        all_neighbors = cur.fetchall()
-        for u in all_neighbors:
-            u = u[0]
-            if deg[u][0] > deg[v][0]:
-                du = deg[u][0]
-                pu = pos[u]
-                pw = bin[du]
-                w = vert[pw]
-                if u != w:
-                    pos[u] = pw
-                    pos[w] = pu
-                    vert[pu] = w
-                    vert[pw] = u
-                bin[du] += 1
-                deg[u] = (deg[u][0] - 1, )
-    print deg
-    
+    #~ cur.execute("SELECT node_id, coreness" +
+                #~ " FROM %s" % GM_NODE_CORENESS +
+                #~ " WHERE node_id = 0 OR node_id = 17 OR node_id = 9422 OR node_id = 18475 OR node_id = 27763" +
+                #~ " ORDER BY node_id")
+    #~ print cur.fetchall()
     db_conn.commit()
     cur.close()
+
 
 
 # Phase 1: distribution of coreness
@@ -1150,7 +965,7 @@ def main():
             
         gm_sql_load_table_from_file(db_conn, GM_TABLE, col_fmt, args.input_file, args.delimiter)
         
-        gm_to_undirected(False)
+        gm_to_undirected()
         
         if (args.undirected):
             GM_TABLE = GM_TABLE_UNDIRECT
@@ -1166,7 +981,7 @@ def main():
         
         # Tasks
         # phase 1: coreness of nodes
-        gm_node_coreness_wiki()
+        gm_node_coreness()
         gm_coreness_distribution()
         gm_degeneracy()
         
