@@ -3,9 +3,9 @@
 
 #Initialization database parameters
 GM_DB = "postgres"
-GM_DB_USER = "haichenl"
+GM_DB_USER = "zhonghal"
 GM_DB_PASS = "password"
-GM_DB_PORT = 15035
+GM_DB_PORT = 15043
 
 #Default Table names
 GM_TABLE = "GM_TABLE"

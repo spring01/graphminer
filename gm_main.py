@@ -65,25 +65,25 @@ def gm_save_tables (dest_dir, belief):
     gm_sql_save_table_to_file(db_conn, GM_CORENESS_DISTRIBUTION, "coreness, count", \
                                   os.path.join(dest_dir,"corenessdist.csv"), ",");
 
-    gm_sql_save_table_to_file(db_conn, GM_PAGERANK, "node_id, page_rank", \
-                                  os.path.join(dest_dir,"pagerank.csv"), ",");
+    # gm_sql_save_table_to_file(db_conn, GM_PAGERANK, "node_id, page_rank", \
+    #                               os.path.join(dest_dir,"pagerank.csv"), ",");
                                   
 
-    gm_sql_save_table_to_file(db_conn, GM_CON_COMP, "node_id, component_id", \
-                                  os.path.join(dest_dir,"conncomp.csv"), ",");                               
+    # # gm_sql_save_table_to_file(db_conn, GM_CON_COMP, "node_id, component_id", \
+    #                               os.path.join(dest_dir,"conncomp.csv"), ",");                               
 
-    gm_sql_save_table_to_file(db_conn, GM_RADIUS, "node_id, radius", \
-                                  os.path.join(dest_dir,"radius.csv"), ",");         
+    # # gm_sql_save_table_to_file(db_conn, GM_RADIUS, "node_id, radius", \
+    #                               os.path.join(dest_dir,"radius.csv"), ",");         
                         
-    if (belief):
-         gm_sql_save_table_to_file(db_conn, GM_BELIEF, "node_id, belief", \
-                                  os.path.join(dest_dir,"belief.csv"), ",");     
+    # if (belief):
+    #      gm_sql_save_table_to_file(db_conn, GM_BELIEF, "node_id, belief", \
+    #                               os.path.join(dest_dir,"belief.csv"), ",");     
 
-    gm_sql_save_table_to_file(db_conn, GM_EIG_VALUES, "id, value", \
-                                  os.path.join(dest_dir,"eigval.csv"), ",");                                 
+    # gm_sql_save_table_to_file(db_conn, GM_EIG_VALUES, "id, value", \
+    #                               os.path.join(dest_dir,"eigval.csv"), ",");                                 
                                   
-    gm_sql_save_table_to_file(db_conn, GM_EIG_VECTORS, "row_id, col_id, value", \
-                                  os.path.join(dest_dir,"eigvec.csv"), ",");                               
+    # gm_sql_save_table_to_file(db_conn, GM_EIG_VECTORS, "row_id, col_id, value", \
+    #                               os.path.join(dest_dir,"eigvec.csv"), ",");                               
                                   
 
 #Project Tasks
@@ -801,131 +801,148 @@ def gm_anomaly_detection():
     print "Time taken = " + str(time.time()-start_time)     
     
 
-# Phase 1: coreness of nodes
+
+#  Phase 1: coreness of nodes(slow)
+#  this version is correctly implemented with a for loop, but it takes about
+#  2 hr for dataset epi and slash
 #-----------------------------------------------------------------------------#
-def gm_node_coreness():
+
+def gm_node_coreness_puresql_slow():
+
+    start = time.time()
     cur = db_conn.cursor()    
     
     # Create Table to store node coreness
     print "Computing Node coreness..."
     gm_sql_table_drop_create(db_conn, GM_NODE_CORENESS, "node_id integer, \
                                                          coreness integer")
-    
+
     gm_sql_table_drop_create(db_conn, "DEG_SORTED", "node_id integer, \
                                                      in_degree integer")
+
     cur.execute("INSERT INTO %s" % "DEG_SORTED" +
                 " SELECT node_id, in_degree FROM %s" % GM_NODE_DEGREES +
                 " ORDER BY in_degree ASC")
     
-    cur.execute("SELECT node_id, in_degree FROM %s" % "DEG_SORTED")
+    cur.execute("SELECT node_id, in_degree FROM %s" % "DEG_SORTED" +
+                " ORDER BY in_degree ASC")
     all_nodes = cur.fetchall()
     num_nodes = len(all_nodes)
+    node = all_nodes[0]
+     
+
     for ind in xrange(num_nodes):
-        node = all_nodes[ind]
-        # core[node_id] = degree[node_id]
+
+        print ind+1, "out of", num_nodes
+
+        #insert the min degree node
         cur.execute("INSERT INTO %s" % GM_NODE_CORENESS +
                     " SELECT node_id, in_degree AS coreness FROM %s"
                     % "DEG_SORTED" +
                     " WHERE node_id = %s" % str(node[0]))
         
-        # neighbors
-        cur.execute(" SELECT dst_id FROM %s" % GM_TABLE +
-                    " WHERE src_id = %s"
-                    " GROUP BY dst_id" % str(node[0]))
-        all_neighbors = cur.fetchall()
-        for neighbor in all_neighbors:
-            # degree_v
-            cur.execute(" SELECT in_degree FROM %s" % "DEG_SORTED" +
-                        " WHERE node_id = %s" % str(node[0]))
-            degree_node = cur.fetchone()[0]
-            
-            # degree_u
-            cur.execute(" SELECT in_degree FROM %s" % "DEG_SORTED" +
-                        " WHERE node_id = %s" % str(neighbor[0]))
-            degree_neighbor = cur.fetchone()[0]
-            if degree_neighbor > degree_node:
-                cur.execute(" SELECT node_id FROM %s" % "DEG_SORTED" +
-                            " WHERE in_degree = %s" % str(degree_neighbor))
-                swap_with = cur.fetchone()
-                if neighbor[0] != swap_with[0]:
-                    cur.execute(" UPDATE %s" % "DEG_SORTED" +
-                                " SET node_id = CASE "
-                                " WHEN node_id = %s" % str(neighbor[0]) +
-                                " THEN %s" % str(swap_with[0]) +
-                                " ELSE %s END" % str(neighbor[0]) +
-                                " WHERE node_id IN (%s," % str(neighbor[0]) +
-                                " %s)" % str(swap_with[0]))
-                cur.execute(" UPDATE %s" % "DEG_SORTED" +
-                            " SET in_degree = %s" % str(degree_neighbor - 1) +
-                            " WHERE node_id = %s" % str(neighbor[0]))
+
+        
+        #delete the inserted node
+        cur.execute("DELETE FROM DEG_SORTED" +
+                    " WHERE node_id = %s" % str(node[0]))
+
+        #update the neighbors
+        cur.execute("UPDATE DEG_SORTED " +
+                    " SET in_degree = in_degree-1" +
+                    " WHERE node_id IN (SELECT dst_id FROM %s" % GM_TABLE +
+                    " WHERE src_id = %s)" % str(node[0]) +   
+                    " AND in_degree > %s" % str(node[1]))
+
+        #find the current min degree node
+        cur.execute("SELECT node_id, in_degree FROM %s" % "DEG_SORTED" +
+                    " WHERE in_degree = (SELECT MIN(in_degree) FROM DEG_SORTED)")
+
+        node = cur.fetchone()
+   
     gm_sql_table_drop(db_conn, "DEG_SORTED")
     db_conn.commit()
     cur.close()
 
+    print "elapsed time:", time.time()-start
 
-# Phase 1: coreness of nodes
+#  Phase 1: coreness of nodes(fast)
+#  try to improve the speed further by dealing with multiple nodes with same
+#  MIN degree together
 #-----------------------------------------------------------------------------#
-def gm_node_coreness_slow():
+
+def gm_node_coreness_puresql_fast():
+
+    start = time.time()
     cur = db_conn.cursor()    
     
     # Create Table to store node coreness
     print "Computing Node coreness..."
     gm_sql_table_drop_create(db_conn, GM_NODE_CORENESS, "node_id integer, \
                                                          coreness integer")
-    gm_sql_table_drop_create(db_conn, "DEG_SORTED_BKUP",
-                                      "node_id integer, in_degree integer")
+
     gm_sql_table_drop_create(db_conn, "DEG_SORTED", "node_id integer, \
                                                      in_degree integer")
+
     cur.execute("INSERT INTO %s" % "DEG_SORTED" +
                 " SELECT node_id, in_degree FROM %s" % GM_NODE_DEGREES +
                 " ORDER BY in_degree ASC")
     
-    cur.execute("SELECT node_id, in_degree FROM %s" % "DEG_SORTED")
-    all_nodes = cur.fetchall()
-    num_nodes = len(all_nodes)
-    for ind in xrange(num_nodes):
-        node = all_nodes[ind]
-        # core[node_id] = degree[node_id]
+    cur.execute("SELECT MIN(in_degree) FROM %s" % "DEG_SORTED")
+    min_val = cur.fetchone()[0]
+    print min_val
+
+    while min_val:
+        #insert the min degree nodes
         cur.execute("INSERT INTO %s" % GM_NODE_CORENESS +
                     " SELECT node_id, in_degree AS coreness FROM %s"
                     % "DEG_SORTED" +
-                    " WHERE node_id = %s" % str(node[0]))
-        
-        # neighbors
-        cur.execute(" SELECT dst_id FROM %s" % GM_TABLE +
-                    " WHERE src_id = %s"
-                    " GROUP BY dst_id" % str(node[0]))
-        all_neighbors = cur.fetchall()
-        for neighbor in all_neighbors:
-            # degree_v
-            cur.execute(" SELECT in_degree FROM %s" % "DEG_SORTED" +
-                        " WHERE node_id = %s" % str(node[0]))
-            degree_node = cur.fetchone()[0]
-            
-            # degree_u
-            cur.execute(" SELECT in_degree FROM %s" % "DEG_SORTED" +
-                        " WHERE node_id = %s" % str(neighbor[0]))
-            degree_neighbor = cur.fetchone()[0]
-            if degree_neighbor > degree_node:
-                cur.execute(" UPDATE %s" % "DEG_SORTED" +
-                            " SET in_degree = %s" % str(degree_neighbor - 1) +
-                            " WHERE node_id = %s" % str(neighbor[0]))
-                gm_sql_table_drop_create(db_conn, "DEG_SORTED_BKUP",
-                                         "node_id integer, in_degree integer")
-                cur.execute("INSERT INTO %s" % "DEG_SORTED_BKUP" +
-                            " SELECT node_id, in_degree FROM %s" % "DEG_SORTED")
-                cur.execute("ALTER TABLE %s ADD sort_id SERIAL" % "DEG_SORTED_BKUP")
-                cur.execute("ALTER TABLE %s ADD PRIMARY KEY (sort_id)" % "DEG_SORTED_BKUP")
-                gm_sql_table_drop_create(db_conn, "DEG_SORTED",
-                                         "node_id integer, in_degree integer")
-                cur.execute("INSERT INTO %s" % "DEG_SORTED" +
-                            " SELECT node_id, in_degree FROM %s" % "DEG_SORTED_BKUP" +
-                            " ORDER BY in_degree ASC, sort_id ASC")
-                cur.execute("SELECT node_id, in_degree FROM %s" % "DEG_SORTED")
-                all_nodes = cur.fetchall()
+                    " WHERE in_degree = %s" % str(min_val))
+
+        #find the neighbor of the min degree nodes, view is wrong due to automatic update
+        # cur.execute("CREATE VIEW DEG_NEIGHBOR AS" +
+        #             " SELECT dst_id, COUNT(dst_id) AS count FROM %s" % GM_TABLE +
+        #             " WHERE src_id IN (SELECT node_id FROM DEG_SORTED" + 
+        #             " WHERE in_degree = %s)" % str(min_val) +
+        #             " GROUP BY dst_id")
+
+        gm_sql_table_drop_create(db_conn, "DEG_NEIGHBOR", "dst_id integer, \
+                                                         count integer")
+
+        cur.execute("INSERT INTO %s" % "DEG_NEIGHBOR" +
+                    " SELECT dst_id, COUNT(dst_id) AS count FROM %s" % GM_TABLE +
+                    " WHERE src_id IN (SELECT node_id FROM DEG_SORTED" + 
+                    " WHERE in_degree = %s)" % str(min_val) +
+                    " GROUP BY dst_id")
+
+        #update the neighbors if degree is less than min_val + count
+        cur.execute("UPDATE DEG_SORTED " +
+                    " SET in_degree = %s" % str(min_val)+
+                    " FROM DEG_NEIGHBOR AS D" +
+                    " WHERE node_id = D.dst_id" + 
+                    " AND in_degree <= %s+D.count" % str(min_val))
+
+        #update the neighbors if degree is greater than min_val + count
+        cur.execute("UPDATE DEG_SORTED " +
+                    " SET in_degree = in_degree-D.count" +
+                    " FROM DEG_NEIGHBOR AS D" +
+                    " WHERE node_id = D.dst_id" + 
+                    " AND in_degree > %s+D.count" % str(min_val))
+
+        #delete the recorded nodes
+        cur.execute("DELETE FROM DEG_SORTED" +
+                    " WHERE node_id IN (SELECT node_id FROM GM_NODE_CORENESS)")
+
+        cur.execute("SELECT MIN(in_degree) FROM %s" % "DEG_SORTED")
+        min_val = cur.fetchone()[0]
+        print min_val
+    
+   
     gm_sql_table_drop(db_conn, "DEG_SORTED")
     db_conn.commit()
     cur.close()
+
+    print "elapsed time:", time.time()-start
 
 
 # Phase 1: distribution of coreness
@@ -948,7 +965,7 @@ def gm_coreness_distribution():
 
 # Phase 1: degeneracy of the graph
 #-----------------------------------------------------------------------------#
-def gm_coreness_distribution():
+def gm_degeneracy():
     
     cur = db_conn.cursor()
     print "Computing degeneracy of the graph..."
@@ -1011,8 +1028,16 @@ def main():
             
         gm_sql_load_table_from_file(db_conn, GM_TABLE, col_fmt, args.input_file, args.delimiter)
         
-        gm_to_undirected(False)
+        gm_to_undirected(True)
         
+        #test undirect and direct 
+        # gm_sql_save_table_to_file(db_conn, GM_TABLE, "src_id, dst_id", \
+        #                           os.path.join(args.dest_dir,"table.csv"), ",");
+
+        # gm_sql_save_table_to_file(db_conn, GM_TABLE_UNDIRECT, "src_id, dst_id", \
+        #                           os.path.join(args.dest_dir,"table_undirect.csv"), ",");
+
+
         if (args.undirected):
             GM_TABLE = GM_TABLE_UNDIRECT
                    
@@ -1027,8 +1052,9 @@ def main():
         
         # Tasks
         # phase 1: coreness of nodes
-        gm_node_coreness_slow()
+        gm_node_coreness_puresql_fast()
         gm_coreness_distribution()
+        gm_degeneracy()
         
         gm_degree_distribution(args.undirected)                 # Degree distribution
         
@@ -1057,4 +1083,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
