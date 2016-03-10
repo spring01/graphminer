@@ -1,11 +1,6 @@
 # -*- coding: utf-8 -*-
 # This file contains the various parameters used and default table names
-
-#Initialization database parameters
-GM_DB = "postgres"
-GM_DB_USER = "haichenl"
-GM_DB_PASS = "password"
-GM_DB_PORT = 15035
+from gm_usr import *
 
 #Default Table names
 GM_TABLE = "GM_TABLE"
