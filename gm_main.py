@@ -70,7 +70,6 @@ def gm_save_tables (dest_dir, belief):
     gm_sql_save_table_to_file(db_conn, GM_PAGERANK, "node_id, page_rank", \
                                   os.path.join(dest_dir,"pagerank.csv"), ",");
                                   
-
     gm_sql_save_table_to_file(db_conn, GM_CON_COMP, "node_id, component_id", \
                                   os.path.join(dest_dir,"conncomp.csv"), ",");                               
 
@@ -1075,8 +1074,6 @@ def main():
         gm_all_radius(num_nodes)      # timing
         if (args.belief_file):
             gm_belief_propagation(args.belief_file, args.delimiter, args.undirected) # timing
-        
-        
         gm_eigen_triangle_count()
         gm_naive_triangle_count()
 
