@@ -1,4 +1,5 @@
 doc
 output
 *.pyc
+gm_usr.py
 
