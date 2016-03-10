@@ -1,0 +1,3 @@
+demo_index:
+	chmod a+rwx `pwd`
+	python gm_main.py --file `pwd`/samplegraph.txt --dest_dir `pwd`/output --belief_file `pwd`/priorsbelief.txt --unweighted --undirected --index_method=btree --index_order_by="(src_id, dst_id)" --index_clustering=True

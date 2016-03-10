@@ -158,7 +158,7 @@ def gm_sql_vector_random (db_conn, vector):
 
     gm_sql_create_and_insert(db_conn, vector, GM_NODES, \
                              "id integer, value double precision", \
-                             "id, value", "node_id, random()")
+                             "id, value", "node_id, %s" % random())
                        
     gm_sql_normalize_vector(db_conn, vector, "value")
     

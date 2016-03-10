@@ -6,11 +6,13 @@ from math import sqrt
 import os
 import time
 
+import random
+
 db_conn = None;
 
 
 # Convert directed to undirected + remove multiple edges
-def gm_to_undirected(rm_multiple = True):
+def gm_to_undirected(rm_multiple=False):
     cur = db_conn.cursor()
     gm_sql_table_drop_create(db_conn, GM_TABLE_UNDIRECT, "src_id integer, dst_id integer, weight real")
     
@@ -49,10 +51,10 @@ def gm_save_tables (dest_dir, belief):
     print "Saving tables..."
     gm_sql_save_table_to_file(db_conn, GM_DEGREE_DISTRIBUTION, "degree, count", \
                                   os.path.join(dest_dir,"degreedist.csv"), ",");
-    #~ gm_sql_save_table_to_file(db_conn, GM_INDEGREE_DISTRIBUTION, "degree, count", \
-                                  #~ os.path.join(dest_dir,"indegreedist.csv"), ",");
-    #~ gm_sql_save_table_to_file(db_conn, GM_OUTDEGREE_DISTRIBUTION, "degree, count", \
-                                  #~ os.path.join(dest_dir,"outdegreedist.csv"), ",");
+    gm_sql_save_table_to_file(db_conn, GM_INDEGREE_DISTRIBUTION, "degree, count", \
+                                  os.path.join(dest_dir,"indegreedist.csv"), ",");
+    gm_sql_save_table_to_file(db_conn, GM_OUTDEGREE_DISTRIBUTION, "degree, count", \
+                                  os.path.join(dest_dir,"outdegreedist.csv"), ",");
 
     gm_sql_save_table_to_file(db_conn, GM_NODE_DEGREES, "node_id, in_degree, out_degree", \
                                   os.path.join(dest_dir,"degree.csv"), ",");
@@ -65,25 +67,25 @@ def gm_save_tables (dest_dir, belief):
     gm_sql_save_table_to_file(db_conn, GM_CORENESS_DISTRIBUTION, "coreness, count", \
                                   os.path.join(dest_dir,"corenessdist.csv"), ",");
 
-    #~ gm_sql_save_table_to_file(db_conn, GM_PAGERANK, "node_id, page_rank", \
-                                  #~ os.path.join(dest_dir,"pagerank.csv"), ",");
-                                  #~ 
+    gm_sql_save_table_to_file(db_conn, GM_PAGERANK, "node_id, page_rank", \
+                                  os.path.join(dest_dir,"pagerank.csv"), ",");
+                                  
 
     gm_sql_save_table_to_file(db_conn, GM_CON_COMP, "node_id, component_id", \
                                   os.path.join(dest_dir,"conncomp.csv"), ",");                               
-#~ 
-    #~ gm_sql_save_table_to_file(db_conn, GM_RADIUS, "node_id, radius", \
-                                  #~ os.path.join(dest_dir,"radius.csv"), ",");         
-                        #~ 
-    #~ if (belief):
-         #~ gm_sql_save_table_to_file(db_conn, GM_BELIEF, "node_id, belief", \
-                                  #~ os.path.join(dest_dir,"belief.csv"), ",");     
-#~ 
-    #~ gm_sql_save_table_to_file(db_conn, GM_EIG_VALUES, "id, value", \
-                                  #~ os.path.join(dest_dir,"eigval.csv"), ",");                                 
-                                  #~ 
-    #~ gm_sql_save_table_to_file(db_conn, GM_EIG_VECTORS, "row_id, col_id, value", \
-                                  #~ os.path.join(dest_dir,"eigvec.csv"), ",");                               
+
+    gm_sql_save_table_to_file(db_conn, GM_RADIUS, "node_id, radius", \
+                                  os.path.join(dest_dir,"radius.csv"), ",");         
+                        
+    if (belief):
+         gm_sql_save_table_to_file(db_conn, GM_BELIEF, "node_id, belief", \
+                                  os.path.join(dest_dir,"belief.csv"), ",");     
+
+    gm_sql_save_table_to_file(db_conn, GM_EIG_VALUES, "id, value", \
+                                  os.path.join(dest_dir,"eigval.csv"), ",");                                 
+                                  
+    gm_sql_save_table_to_file(db_conn, GM_EIG_VECTORS, "row_id, col_id, value", \
+                                  os.path.join(dest_dir,"eigvec.csv"), ",");                               
                                   
 
 #Project Tasks
@@ -96,6 +98,8 @@ def gm_node_degrees ():
     # Create Table to store node degrees
     # If the graph is undirected, all the degree values will be the same
     print "Computing Node degrees..."
+    
+    start_time = time.time()
     
     gm_sql_table_drop_create(db_conn, GM_NODE_DEGREES, "node_id integer, \
                              in_degree integer, out_degree integer")
@@ -111,7 +115,9 @@ def gm_node_degrees ():
                              " GROUP BY src_id) \"TAB\" " +
                              " GROUP BY node_id")
     db_conn.commit()
-                            
+    
+    print 'Time taken gm_node_degrees:', time.time() - start_time
+    
     cur.close()
 
        
@@ -156,6 +162,8 @@ def gm_pagerank (num_nodes, max_iterations = gm_param_pr_max_iter, \
     
     cur = db_conn.cursor();
     print "Computing PageRanks..."
+    
+    start_time = time.time()
     
     gm_sql_table_drop_create(db_conn, norm_table,"src_id integer, dst_id integer, weight double precision")
     
@@ -212,6 +220,8 @@ def gm_pagerank (num_nodes, max_iterations = gm_param_pr_max_iter, \
     gm_sql_table_drop(db_conn, next_table)
     gm_sql_table_drop(db_conn, norm_table)
     
+    print 'Time taken gm_pagerank:', time.time() - start_time
+    
     cur.close()
     
 # Task 3: Weakly Connected Components
@@ -220,7 +230,9 @@ def gm_connected_components (num_nodes):
     temp_table = "GM_CC_TEMP"
     cur = db_conn.cursor()
     print 'Computing Weakly Connected Components...'
-
+    
+    start_time = time.time()
+    
     # Create CC table and initialize component id to node id
     gm_sql_create_and_insert(db_conn, GM_CON_COMP, GM_NODES, \
                              "node_id integer, component_id integer", \
@@ -261,6 +273,9 @@ def gm_connected_components (num_nodes):
     # Drop temp tables
     gm_sql_table_drop(db_conn, temp_table)
     
+    print 'Time taken gm_connected_components:', time.time() - start_time
+    
+    
 # Task 4: Radius of every node
 #-------------------------------------------------------------#
 def gm_all_radius (num_nodes, max_iter = gm_param_radius_max_iter):
@@ -270,6 +285,8 @@ def gm_all_radius (num_nodes, max_iter = gm_param_radius_max_iter):
     
     cur = db_conn.cursor()
     print 'Computing radius of every node...'    
+    
+    start_time = time.time()
     
     # initialize hop 0 table's hash     
     gm_sql_create_and_insert(db_conn, hop_table+"0", GM_NODES, \
@@ -333,6 +350,9 @@ def gm_all_radius (num_nodes, max_iter = gm_param_radius_max_iter):
     
 
     cur.close()
+    
+    print 'Time taken gm_all_radius:', time.time() - start_time
+    
     
 # Task 5: Eigen values
 # ------------------------------------------------------------------------- #
@@ -483,6 +503,8 @@ def gm_eigen (steps, num_nodes, err1, err2, adj_table=GM_TABLE_UNDIRECT):
     
     cur = db_conn.cursor();
     print "Computing Eigenvalues..."
+    
+    start_time = time.time()
     
     # create basis vectors
     gm_sql_vector_random(db_conn, basis_vect_1)    
@@ -643,6 +665,9 @@ def gm_eigen (steps, num_nodes, err1, err2, adj_table=GM_TABLE_UNDIRECT):
     gm_sql_table_drop(db_conn, tridiag_table)
     gm_sql_table_drop(db_conn, diag_table)
     gm_sql_table_drop(db_conn, eigvec_table)
+    
+    print 'Time taken gm_eigen:', time.time() - start_time
+    
   
 
 # Task 6: Fast Belief Propagation
@@ -652,7 +677,9 @@ def gm_belief_propagation(belief_file, delim, undirected, \
 
     next_table = "GM_BP_NEXT"
     print "Computing belief propagation..."
-
+    
+    start_time = time.time()
+    
     # BP require that the graph is undirected. 
     if (undirected):
         degree_col = "out_degree"
@@ -722,6 +749,8 @@ def gm_belief_propagation(belief_file, delim, undirected, \
     gm_sql_table_drop(db_conn, next_table)
 
     cur.close()
+    
+    print 'Time taken gm_belief_propagation:', time.time() - start_time
 
 
   
@@ -808,6 +837,9 @@ def gm_node_coreness():
     
     # Create Table to store node coreness
     print "Computing Node coreness..."
+    
+    start_time = time.time()
+    
     # Initialize an output list L.
     list_L = []
     
@@ -878,6 +910,9 @@ def gm_node_coreness():
                 #~ " ORDER BY node_id")
     #~ print cur.fetchall()
     db_conn.commit()
+    
+    print 'Time taken gm_node_coreness:', time.time() - start_time
+    
     cur.close()
 
 
@@ -912,6 +947,28 @@ def gm_degeneracy():
     db_conn.commit()                        
     cur.close()
 
+
+# Phase 2: creating index
+#
+# Input arguments:
+#   method: none, btree, hash, gist, or gin
+#   order_by: any column (or expression) already in GM_TABLE
+#   clustering: True or False
+#-----------------------------------------------------------------------------#
+def gm_create_index(cur, method="none", order_by="(src_id)", clustering=False):
+    
+    if method.lower() != "none":
+        print ("Creating index using %s" % method +
+              " on %s" % order_by +
+              " with clustering = %s" % str(clustering))
+        cur.execute("DROP INDEX IF EXISTS idx")
+        cur.execute("CREATE INDEX idx"
+                    " ON %s" % GM_TABLE +
+                    " USING %s" % method +
+                    " %s" % order_by)
+        if clustering:
+            cur.execute("CLUSTER %s USING idx" % GM_TABLE)
+    
 
 
 def main():
@@ -950,7 +1007,24 @@ def main():
                          (<node_id>, <belief>). Specify a different delimiter with --delim option.\
                          The prior beliefs are expected to be centered around 0. i.e. positive \
                          nodes have priors >0, negative nodes <0 and unknown nodes 0. ')
-                         
+    
+    parser.add_argument ('--index_method', dest='index_method', type=str, default='none',
+                         help='Indexing method. Choices are none, btree, hash, gist, spgist and gin. \
+                         The default method is none, i.e., no index.')
+    
+    parser.add_argument ('--index_order_by', dest='index_order_by', type=str, default='(src_id)',
+                         help='Indexing column or expression. An expression based on one or more \
+                         columns of the table. The expression usually must be written with surrounding \
+                         parentheses, as shown in the syntax. However, the parentheses can be omitted \
+                         if the expression has the form of a function call.')
+    
+    parser.add_argument ('--index_clustering', dest='index_clustering', type=bool, default=False,
+                         help='Whether or not to put a clustering indexing. Instructs PostgreSQL \
+                         to cluster the table GM_TABLE based on the created index.')
+    
+    
+    
+    
     args = parser.parse_args()
     
     try:
@@ -965,7 +1039,7 @@ def main():
             
         gm_sql_load_table_from_file(db_conn, GM_TABLE, col_fmt, args.input_file, args.delimiter)
         
-        gm_to_undirected()
+        gm_to_undirected(True)
         
         if (args.undirected):
             GM_TABLE = GM_TABLE_UNDIRECT
@@ -977,31 +1051,43 @@ def main():
         cur.execute("SELECT count(*) from %s" % GM_NODES)
         num_nodes = cur.fetchone()[0]  
         
-        gm_node_degrees()
+        gm_create_index(cur, method=args.index_method,
+                             order_by=args.index_order_by,
+                             clustering=args.index_clustering)
+        
+        random.seed(15826)
+        
+        start_time = time.time()
+        
+        gm_node_degrees() # timing
         
         # Tasks
         # phase 1: coreness of nodes
-        gm_node_coreness()
+        gm_node_coreness() # timing
         gm_coreness_distribution()
         gm_degeneracy()
         
         gm_degree_distribution(args.undirected)                 # Degree distribution
         
-        #~ gm_pagerank(num_nodes)                                  # Pagerank
-        #~ gm_connected_components(num_nodes)                      # Connected components
-        #~ gm_eigen(gm_param_eig_max_iter, num_nodes, gm_param_eig_thres1, gm_param_eig_thres2)    
-        #~ gm_all_radius(num_nodes)     
-        #~ if (args.belief_file):
-            #~ gm_belief_propagation(args.belief_file, args.delimiter, args.undirected)
+        gm_pagerank(num_nodes)  # timing                                  # Pagerank
+        gm_connected_components(num_nodes)  # timing                     # Connected components
+        gm_eigen(gm_param_eig_max_iter, num_nodes, gm_param_eig_thres1, gm_param_eig_thres2)     # timing
+        gm_all_radius(num_nodes)      # timing
+        if (args.belief_file):
+            gm_belief_propagation(args.belief_file, args.delimiter, args.undirected) # timing
         
         
-        #~ gm_eigen_triangle_count()
-        #~ #gm_naive_triangle_count()
+        gm_eigen_triangle_count()
+        gm_naive_triangle_count()
 
         # Save tables to disk
         gm_save_tables(args.dest_dir, args.belief_file)
         #gm_anomaly_detection()
-                     
+        
+        
+        print 'Time taken total:', time.time() - start_time
+        
+        
         gm_db_bubye(db_conn)
     except:
         print "Unexpected error:", sys.exc_info()[0]    
