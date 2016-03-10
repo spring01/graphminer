@@ -69,8 +69,8 @@ def gm_save_tables (dest_dir, belief):
                                   #~ os.path.join(dest_dir,"pagerank.csv"), ",");
                                   #~ 
 
-    gm_sql_save_table_to_file(db_conn, GM_CON_COMP, "node_id, component_id", \
-                                  os.path.join(dest_dir,"conncomp.csv"), ",");                               
+    # gm_sql_save_table_to_file(db_conn, GM_CON_COMP, "node_id, component_id", \
+    #                               os.path.join(dest_dir,"conncomp.csv"), ",");                               
 #~ 
     #~ gm_sql_save_table_to_file(db_conn, GM_RADIUS, "node_id, radius", \
                                   #~ os.path.join(dest_dir,"radius.csv"), ",");         
@@ -988,7 +988,7 @@ def main():
         gm_degree_distribution(args.undirected)                 # Degree distribution
         
         #~ gm_pagerank(num_nodes)                                  # Pagerank
-        #~ gm_connected_components(num_nodes)                      # Connected components
+        # gm_connected_components(num_nodes)                      # Connected components
         #~ gm_eigen(gm_param_eig_max_iter, num_nodes, gm_param_eig_thres1, gm_param_eig_thres2)    
         #~ gm_all_radius(num_nodes)     
         #~ if (args.belief_file):
