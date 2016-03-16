@@ -969,6 +969,62 @@ def gm_create_index(cur, method="none", order_by="(src_id)", clustering=False):
             cur.execute("CLUSTER %s USING idx" % GM_TABLE)
     
 
+# Phase 2: reorder table
+#
+#
+def gm_node_reorder(cur, num_nodes, attribute='pagerank'):
+
+    print "Table reordering by %s..." %attribute
+    #some algorithm requires GM_NODE_DEGREES
+    gm_node_degrees()
+
+    if attribute.lower() == 'degree':
+
+        cur.execute("ALTER TABLE %s" % GM_TABLE +
+                    " ADD COLUMN degree integer")
+        cur.execute("UPDATE %s AS T" % GM_TABLE +
+                    # " INNER JOIN %s N" % GM_NODE_DEGREES +
+                    " SET degree = N.in_degree" +
+                    " FROM %s N" % GM_NODE_DEGREES +
+                    " WHERE T.src_id = N.node_id")
+        cur.execute("CREATE INDEX degidx" +
+                    " ON %s (degree)" % GM_TABLE)
+
+        cur.execute("CLUSTER VERBOSE %s" %GM_TABLE +
+                    " USING degidx")
+
+    elif attribute.lower() == 'pagerank':
+
+        gm_pagerank(num_nodes)
+        cur.execute("ALTER TABLE %s" % GM_TABLE +
+                    " ADD COLUMN pagerank double precision")
+        cur.execute("UPDATE %s AS T" % GM_TABLE +
+                    " SET pagerank = P.page_rank" +
+                    " FROM %s P" % GM_PAGERANK +
+                    " WHERE T.src_id = P.node_id")
+        cur.execute("CREATE INDEX pageidx" +
+                    " ON %s (pagerank)" % GM_TABLE)
+
+        cur.execute("CLUSTER VERBOSE %s" %GM_TABLE +
+                    " USING pageidx")
+
+    elif attribute.lower() == 'coreness':
+
+        gm_node_coreness()
+        cur.execute("ALTER TABLE %s" % GM_TABLE +
+                    " ADD COLUMN coreness integer")
+        cur.execute("UPDATE %s AS T" % GM_TABLE +
+                    " SET coreness = C.coreness" +
+                    " FROM %s C" % GM_NODE_CORENESS +
+                    " WHERE T.src_id = C.node_id")
+        cur.execute("CREATE INDEX coreidx" +
+                    " ON %s (coreness)" % GM_TABLE)
+
+        cur.execute("CLUSTER VERBOSE %s" %GM_TABLE +
+                    " USING coreidx")
+
+
+
 
 def main():
     global db_conn
@@ -1020,6 +1076,10 @@ def main():
     parser.add_argument ('--index_clustering', dest='index_clustering', type=bool, default=False,
                          help='Whether or not to put a clustering indexing. Instructs PostgreSQL \
                          to cluster the table GM_TABLE based on the created index.')
+
+    parser.add_argument ('--node_ordering', dest='node_ordering', type=str, default='random',
+                         help='ordering the nodes of GM_TABLE by selected attributes: pagerank, coreness, \
+                         degree, slashnburn')
     
     
     
@@ -1050,6 +1110,10 @@ def main():
         cur.execute("SELECT count(*) from %s" % GM_NODES)
         num_nodes = cur.fetchone()[0]  
         
+        if args.node_ordering != 'random':
+            gm_node_reorder(cur, num_nodes, attribute=args.node_ordering )
+
+
         gm_create_index(cur, method=args.index_method,
                              order_by=args.index_order_by,
                              clustering=args.index_clustering)
