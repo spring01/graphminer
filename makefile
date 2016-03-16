@@ -20,6 +20,16 @@ run_soc-Slashdot0811:
 	python gm_main.py --file `pwd`/soc-Slashdot0811-nosharp.txt --dest_dir `pwd`/output/soc-Slashdot0811 --delim '	' --unweighted --undirected
 	rm soc-Slashdot0811-nosharp.txt soc-Slashdot0811.txt
 
+timing_soc-Epinions1:    
+	chmod a+rwx `pwd`
+	wget http://snap.stanford.edu/data/soc-Epinions1.txt.gz
+	gunzip soc-Epinions1.txt.gz
+	grep -v "#" soc-Epinions1.txt > soc-Epinions1-nosharp.txt
+	mkdir -p `pwd`/output/soc-Epinions1/timing
+	python gm_main.py --file `pwd`/soc-Epinions1-nosharp.txt --dest_dir `pwd`/output/soc-Epinions1 --delim '	' --unweighted --undirected --node_ordering=slashburn --index_method=btree --index_order_by='(src_id, slashburn)' > test.timing
+	rm soc-Epinions1-nosharp.txt soc-Epinions1.txt
+
+
 run_com-amazon:
 	chmod a+rwx `pwd`
 	wget http://snap.stanford.edu/data/bigdata/communities/com-amazon.ungraph.txt.gz
@@ -60,6 +70,10 @@ run_unit_tests:
 	python gm_main.py --file `pwd`/unit_tests/unittest4.txt --dest_dir `pwd`/output/unittest4 --unweighted --undirected
 	mkdir -p `pwd`/output/unittest5
 	python gm_main.py --file `pwd`/unit_tests/unittest5.txt --dest_dir `pwd`/output/unittest5 --unweighted --undirected
+	python gm_main.py --file `pwd`/unit_tests/unittest5.txt --dest_dir `pwd`/output/unittest5 --unweighted --undirected --node_ordering=slashburn --index_method=btree --index_order_by='(src_id, dst_id)'
+	python gm_main.py --file `pwd`/unit_tests/unittest5.txt --dest_dir `pwd`/output/unittest5 --unweighted --undirected --node_ordering=pagerank --index_method=btree --index_order_by='(src_id, dst_id)'
+	python gm_main.py --file `pwd`/unit_tests/unittest5.txt --dest_dir `pwd`/output/unittest5 --unweighted --undirected --node_ordering=degree --index_method=btree --index_order_by='(src_id)'
+	python gm_main.py --file `pwd`/unit_tests/unittest5.txt --dest_dir `pwd`/output/unittest5 --unweighted --undirected --node_ordering=coreness --index_method=btree --index_order_by='(src_id)'
 
 install:
 	sudo apt-get install python-psycopg2

@@ -71,20 +71,20 @@ def gm_save_tables (dest_dir, belief):
                                   os.path.join(dest_dir,"pagerank.csv"), ",");
                                   
     gm_sql_save_table_to_file(db_conn, GM_CON_COMP, "node_id, component_id", \
-                                  os.path.join(dest_dir,"conncomp.csv"), ",");                               
+                                  os.path.join(dest_dir,"conncomp.csv"), ",");
 
     gm_sql_save_table_to_file(db_conn, GM_RADIUS, "node_id, radius", \
-                                  os.path.join(dest_dir,"radius.csv"), ",");         
+                                  os.path.join(dest_dir,"radius.csv"), ",");
                         
     if (belief):
          gm_sql_save_table_to_file(db_conn, GM_BELIEF, "node_id, belief", \
-                                  os.path.join(dest_dir,"belief.csv"), ",");     
+                                  os.path.join(dest_dir,"belief.csv"), ",");
 
     gm_sql_save_table_to_file(db_conn, GM_EIG_VALUES, "id, value", \
-                                  os.path.join(dest_dir,"eigval.csv"), ",");                                 
+                                  os.path.join(dest_dir,"eigval.csv"), ",");
                                   
     gm_sql_save_table_to_file(db_conn, GM_EIG_VECTORS, "row_id, col_id, value", \
-                                  os.path.join(dest_dir,"eigvec.csv"), ",");                               
+                                  os.path.join(dest_dir,"eigvec.csv"), ",");
                                   
 
 #Project Tasks
@@ -952,22 +952,75 @@ def gm_degeneracy():
 # Input arguments:
 #   method: none, btree, hash, gist, or gin
 #   order_by: any column (or expression) already in GM_TABLE
-#   clustering: True or False
 #-----------------------------------------------------------------------------#
-def gm_create_index(cur, method="none", order_by="(src_id)", clustering=False):
+def gm_create_index(cur, method="none", order_by="(src_id)"):
     
     if method.lower() != "none":
         print ("Creating index using %s" % method +
-              " on %s" % order_by +
-              " with clustering = %s" % str(clustering))
+              " on %s" % order_by)
         cur.execute("DROP INDEX IF EXISTS idx")
         cur.execute("CREATE INDEX idx"
                     " ON %s" % GM_TABLE +
                     " USING %s" % method +
                     " %s" % order_by)
-        if clustering:
-            cur.execute("CLUSTER %s USING idx" % GM_TABLE)
     
+
+# Phase 2: SlashBurn
+#
+#-----------------------------------------------------------------------------#
+def gm_slashburn():
+    import numpy as np
+    from scipy.sparse import csr_matrix
+    from scipy.sparse.csgraph import connected_components
+    cur = db_conn.cursor()
+    
+    # Create Table to store node coreness
+    print "Computing SlashBurn..."
+    
+    cur.execute("SELECT src_id AS node_id, ARRAY_AGG(dst_id)" +
+                " FROM %s" % GM_TABLE +
+                " GROUP BY src_id")
+    adj_list = cur.fetchall()
+    num_node = len(adj_list)
+    k = max(1, int(num_node * 0.05))
+    
+    # node_ind maps node_id to its python index
+    node_ind = dict(adj_list).copy()
+    for (key, ind) in zip(node_ind.keys(), range(len(node_ind))):
+        node_ind[key] = ind
+    node_name = node_ind.keys()
+    
+    # create a sparse adjacency matrix
+    non_zero_entries = [(node_ind[adj[0]], node_ind[conn])
+                        for adj in adj_list for conn in adj[1]]
+    row = [entry[0] for entry in non_zero_entries]
+    col = [entry[1] for entry in non_zero_entries]
+    weights = np.ones(len(non_zero_entries))
+    adj_mat = csr_matrix((weights, (row, col)), shape=(num_node, num_node))
+    
+    # initial gcc is the entire graph
+    gcc_ind = range(num_node)
+    slashburn_order = []
+    while len(gcc_ind) > k:
+        gcc = adj_mat[gcc_ind, :].tocsc()[:, gcc_ind].tocsr()
+        gcc_degree = np.array(gcc.sum(axis=1)).ravel()
+        sorted_ind = np.argsort(gcc_degree)[::-1]
+        hub_ind = list(np.array(gcc_ind)[sorted_ind[0:k]])
+        slashburn_order = list(hub_ind) + slashburn_order
+        broken_ind = list(set(gcc_ind) - set(hub_ind))
+        broken_graph = adj_mat[broken_ind, :].tocsc()[:, broken_ind].tocsr()
+        (num_comp, labels) = connected_components(csgraph=broken_graph)
+        nongcc_ind = list(np.array(broken_ind)[labels > 0])
+        slashburn_order += nongcc_ind
+        gcc_ind = list(np.array(broken_ind)[labels == 0])
+    slashburn_list = list(np.array(node_name)[slashburn_order])
+    slashburn = [(nid, sb) for (nid, sb) in zip(node_name, slashburn_list)]
+    gm_sql_table_drop_create(db_conn, GM_SLASHBURN,
+                            "node_id integer, slashburn integer")
+    cur.execute("INSERT INTO %s" % GM_SLASHBURN +
+                " VALUES %s" % str(slashburn).replace('[','').replace(']',''))
+    db_conn.commit()                        
+    cur.close()
 
 # Phase 2: reorder table
 #
@@ -1022,6 +1075,21 @@ def gm_node_reorder(cur, num_nodes, attribute='pagerank'):
 
         cur.execute("CLUSTER VERBOSE %s" %GM_TABLE +
                     " USING coreidx")
+    
+    elif attribute.lower() == 'slashburn':
+
+        gm_slashburn()
+        cur.execute("ALTER TABLE %s" % GM_TABLE +
+                    " ADD COLUMN slashburn integer")
+        cur.execute("UPDATE %s AS T" % GM_TABLE +
+                    " SET slashburn = C.slashburn" +
+                    " FROM %s C" % GM_SLASHBURN +
+                    " WHERE T.src_id = C.node_id")
+        cur.execute("CREATE INDEX coreidx" +
+                    " ON %s (slashburn)" % GM_TABLE)
+
+        cur.execute("CLUSTER VERBOSE %s" %GM_TABLE +
+                    " USING coreidx")
 
 
 
@@ -1072,10 +1140,6 @@ def main():
                          columns of the table. The expression usually must be written with surrounding \
                          parentheses, as shown in the syntax. However, the parentheses can be omitted \
                          if the expression has the form of a function call.')
-    
-    parser.add_argument ('--index_clustering', dest='index_clustering', type=bool, default=False,
-                         help='Whether or not to put a clustering indexing. Instructs PostgreSQL \
-                         to cluster the table GM_TABLE based on the created index.')
 
     parser.add_argument ('--node_ordering', dest='node_ordering', type=str, default='random',
                          help='ordering the nodes of GM_TABLE by selected attributes: pagerank, coreness, \
@@ -1115,8 +1179,7 @@ def main():
 
 
         gm_create_index(cur, method=args.index_method,
-                             order_by=args.index_order_by,
-                             clustering=args.index_clustering)
+                             order_by=args.index_order_by)
         
         random.seed(15826)
         
@@ -1139,7 +1202,7 @@ def main():
         if (args.belief_file):
             gm_belief_propagation(args.belief_file, args.delimiter, args.undirected) # timing
         gm_eigen_triangle_count()
-        gm_naive_triangle_count()
+        #gm_naive_triangle_count()
 
         # Save tables to disk
         gm_save_tables(args.dest_dir, args.belief_file)
