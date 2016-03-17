@@ -1,8 +1,8 @@
-demo:    
+demo:
 	chmod a+rwx `pwd`
 	python gm_main.py --file `pwd`/samplegraph.txt --dest_dir `pwd`/output --belief_file `pwd`/priorsbelief.txt --unweighted --undirected
 
-run_soc-Epinions1:    
+run_soc-Epinions1:
 	chmod a+rwx `pwd`
 	wget http://snap.stanford.edu/data/soc-Epinions1.txt.gz
 	gunzip soc-Epinions1.txt.gz
@@ -11,7 +11,7 @@ run_soc-Epinions1:
 	python gm_main.py --file `pwd`/soc-Epinions1-nosharp.txt --dest_dir `pwd`/output/soc-Epinions1 --delim '	' --unweighted --undirected
 	rm soc-Epinions1-nosharp.txt soc-Epinions1.txt
 
-run_soc-Slashdot0811:    
+run_soc-Slashdot0811:
 	chmod a+rwx `pwd`
 	wget https://snap.stanford.edu/data/soc-Slashdot0811.txt.gz
 	gunzip soc-Slashdot0811.txt.gz
@@ -20,14 +20,16 @@ run_soc-Slashdot0811:
 	python gm_main.py --file `pwd`/soc-Slashdot0811-nosharp.txt --dest_dir `pwd`/output/soc-Slashdot0811 --delim '	' --unweighted --undirected
 	rm soc-Slashdot0811-nosharp.txt soc-Slashdot0811.txt
 
-timing_soc-Epinions1:    
-	chmod a+rwx `pwd`
-	wget http://snap.stanford.edu/data/soc-Epinions1.txt.gz
-	gunzip soc-Epinions1.txt.gz
-	grep -v "#" soc-Epinions1.txt > soc-Epinions1-nosharp.txt
-	mkdir -p `pwd`/output/soc-Epinions1/timing
-	python gm_main.py --file `pwd`/soc-Epinions1-nosharp.txt --dest_dir `pwd`/output/soc-Epinions1 --delim '	' --unweighted --undirected --node_ordering=slashburn --index_method=btree --index_order_by='(src_id, slashburn)' > test.timing
-	rm soc-Epinions1-nosharp.txt soc-Epinions1.txt
+timing-play:
+	./stop_server.bash
+	./start_server.bash
+	wget https://snap.stanford.edu/data/soc-Slashdot0811.txt.gz
+	gunzip soc-Slashdot0811.txt.gz
+	grep -v "#" soc-Slashdot0811.txt > soc-Slashdot0811-nosharp.txt
+	mkdir -p `pwd`/output/soc-Slashdot0811
+	python gm_main.py --file `pwd`/soc-Slashdot0811-nosharp.txt --dest_dir `pwd`/output/soc-Slashdot0811 --delim '	' --unweighted --undirected --cluster_by=slashburn --cluster_order=ASC --index_method=btree --index_order_by="(src_id)" > test.timing
+	rm soc-Slashdot0811-nosharp.txt soc-Slashdot0811.txt
+	cat test.timing | grep Time
 
 
 run_com-amazon:
@@ -58,7 +60,7 @@ run_king-james:
 	rm -r `pwd`/moreno_names
 	rm moreno_names.tar.bz2
 
-run_unit_tests:    
+run_unit_tests:
 	chmod a+rwx `pwd`
 	mkdir -p `pwd`/output/unittest1
 	python gm_main.py --file `pwd`/unit_tests/unittest1.txt --dest_dir `pwd`/output/unittest1 --unweighted --undirected

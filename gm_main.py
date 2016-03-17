@@ -237,8 +237,29 @@ def gm_connected_components (num_nodes):
                              "node_id integer, component_id integer", \
                              "node_id, component_id", "node_id, node_id")
     
+    #~ cur.execute("DROP INDEX IF EXISTS idx")
+    #~ cur.execute("CREATE INDEX idx"
+                    #~ " ON %s" % GM_CON_COMP +
+                    #~ " USING %s" % "btree" +
+                    #~ " %s" % "(node_id)")
+    #~ cur.execute("DROP INDEX IF EXISTS comp_idx")
+    #~ cur.execute("CREATE INDEX comp_idx"
+                    #~ " ON %s" % GM_CON_COMP +
+                    #~ " USING %s" % "btree" +
+                    #~ " %s" % "(component_id)")
+    
     while True:
         gm_sql_table_drop_create(db_conn, temp_table,"node_id integer, component_id integer")
+        
+        
+        #~ cur.execute("EXPLAIN (ANALYZE, BUFFERS) SELECT node_id, MIN(component_id) \"component_id\" FROM (" +
+                        #~ " SELECT src_id \"node_id\", MIN(component_id) \"component_id\" FROM %s, %s" % (GM_TABLE_UNDIRECT,GM_CON_COMP) + 
+                        #~ " WHERE dst_id = node_id GROUP BY src_id" + 
+                        #~ " UNION" +
+                        #~ " SELECT * FROM %s" %  GM_CON_COMP +
+                    #~ " ) \"T\" GROUP BY node_id")
+        #~ print cur.fetchall()
+        
         
         # Set component id as the min{component ids of neighbours, node's componet id}
         cur.execute("INSERT INTO %s " % temp_table + 
@@ -963,6 +984,11 @@ def gm_create_index(cur, method="none", order_by="(src_id)"):
                     " ON %s" % GM_TABLE +
                     " USING %s" % method +
                     " %s" % order_by)
+        cur.execute("DROP INDEX IF EXISTS idx2")
+        cur.execute("CREATE INDEX idx2"
+                    " ON %s" % GM_TABLE +
+                    " USING %s" % method +
+                    " %s" % "(dst_id)")
     
 
 # Phase 2: SlashBurn
@@ -982,7 +1008,7 @@ def gm_slashburn():
                 " GROUP BY src_id")
     adj_list = cur.fetchall()
     num_node = len(adj_list)
-    k = max(1, int(num_node * 0.05))
+    k = max(1, int(num_node * 0.005))
     
     # node_ind maps node_id to its python index
     node_ind = dict(adj_list).copy()
@@ -1000,96 +1026,67 @@ def gm_slashburn():
     
     # initial gcc is the entire graph
     gcc_ind = range(num_node)
-    slashburn_order = []
+    hub_order = []
+    nongcc_order = []
     while len(gcc_ind) > k:
         gcc = adj_mat[gcc_ind, :].tocsc()[:, gcc_ind].tocsr()
         gcc_degree = np.array(gcc.sum(axis=1)).ravel()
-        sorted_ind = np.argsort(gcc_degree)[::-1]
+        sorted_ind = np.argsort(-gcc_degree)
         hub_ind = list(np.array(gcc_ind)[sorted_ind[0:k]])
-        slashburn_order = list(hub_ind) + slashburn_order
+        
+        # ???
+        hub_order = list(hub_ind) + hub_order
+        
         broken_ind = list(set(gcc_ind) - set(hub_ind))
-        broken_graph = adj_mat[broken_ind, :].tocsc()[:, broken_ind].tocsr()
-        (num_comp, labels) = connected_components(csgraph=broken_graph)
-        nongcc_ind = list(np.array(broken_ind)[labels > 0])
-        slashburn_order += nongcc_ind
+        broken = adj_mat[broken_ind, :].tocsc()[:, broken_ind].tocsr()
+        (num_comp, labels) = connected_components(csgraph=broken)
+        
+        broken_degree = np.array(broken.sum(axis=1)).ravel()
+        desc_pieces = np.argsort(-broken_degree[labels > 0])
+        
+        nongcc_ind = list(np.array(broken_ind)[labels > 0][desc_pieces])
+        nongcc_order += nongcc_ind
         gcc_ind = list(np.array(broken_ind)[labels == 0])
-    slashburn_list = list(np.array(node_name)[slashburn_order])
-    slashburn = [(nid, sb) for (nid, sb) in zip(node_name, slashburn_list)]
+    slashburn_order = list(np.array(node_name)[hub_order + nongcc_order])
+    slashburn = [(sb, nid) for (nid, sb) in zip(node_name, slashburn_order)]
     gm_sql_table_drop_create(db_conn, GM_SLASHBURN,
-                            "node_id integer, slashburn integer")
+                             "node_id integer, slashburn integer")
     cur.execute("INSERT INTO %s" % GM_SLASHBURN +
                 " VALUES %s" % str(slashburn).replace('[','').replace(']',''))
     db_conn.commit()                        
     cur.close()
 
-# Phase 2: reorder table
-#
-#
-def gm_node_reorder(cur, num_nodes, attribute='pagerank'):
-
-    print "Table reordering by %s..." %attribute
-    #some algorithm requires GM_NODE_DEGREES
-    gm_node_degrees()
-
-    if attribute.lower() == 'degree':
-
+# Phase 2: clustering
+#   cluster_by:     'random', 'in_degree', 'page_rank', or 'slashburn'
+#   cluster_order:  'ASC' or 'DESC'
+#-----------------------------------------------------------------------------#
+def gm_cluster(cur, num_nodes, cluster_by='random', cluster_order='ASC'):
+    if cluster_by.lower() != 'random':
+        print "Table clustering by %s..." % cluster_by
+        # some algorithm requires GM_NODE_DEGREES
+        gm_node_degrees()
+        if cluster_by.lower() == 'in_degree':
+            table_name = GM_NODE_DEGREES
+        elif cluster_by.lower() == 'page_rank':
+            gm_pagerank(num_nodes)
+            table_name = GM_PAGERANK
+        elif cluster_by.lower() == 'coreness':
+            gm_node_coreness()
+            table_name = GM_NODE_CORENESS
+        elif cluster_by.lower() == 'slashburn':
+            gm_slashburn()
+            table_name = GM_SLASHBURN
         cur.execute("ALTER TABLE %s" % GM_TABLE +
-                    " ADD COLUMN degree integer")
+                    " ADD COLUMN sorting integer")
         cur.execute("UPDATE %s AS T" % GM_TABLE +
-                    # " INNER JOIN %s N" % GM_NODE_DEGREES +
-                    " SET degree = N.in_degree" +
-                    " FROM %s N" % GM_NODE_DEGREES +
+                    " SET sorting = N.%s" % cluster_by +
+                    " FROM %s N" % table_name +
                     " WHERE T.src_id = N.node_id")
-        cur.execute("CREATE INDEX degidx" +
-                    " ON %s (degree)" % GM_TABLE)
-
-        cur.execute("CLUSTER VERBOSE %s" %GM_TABLE +
-                    " USING degidx")
-
-    elif attribute.lower() == 'pagerank':
-
-        gm_pagerank(num_nodes)
-        cur.execute("ALTER TABLE %s" % GM_TABLE +
-                    " ADD COLUMN pagerank double precision")
-        cur.execute("UPDATE %s AS T" % GM_TABLE +
-                    " SET pagerank = P.page_rank" +
-                    " FROM %s P" % GM_PAGERANK +
-                    " WHERE T.src_id = P.node_id")
-        cur.execute("CREATE INDEX pageidx" +
-                    " ON %s (pagerank)" % GM_TABLE)
-
-        cur.execute("CLUSTER VERBOSE %s" %GM_TABLE +
-                    " USING pageidx")
-
-    elif attribute.lower() == 'coreness':
-
-        gm_node_coreness()
-        cur.execute("ALTER TABLE %s" % GM_TABLE +
-                    " ADD COLUMN coreness integer")
-        cur.execute("UPDATE %s AS T" % GM_TABLE +
-                    " SET coreness = C.coreness" +
-                    " FROM %s C" % GM_NODE_CORENESS +
-                    " WHERE T.src_id = C.node_id")
-        cur.execute("CREATE INDEX coreidx" +
-                    " ON %s (coreness)" % GM_TABLE)
-
-        cur.execute("CLUSTER VERBOSE %s" %GM_TABLE +
-                    " USING coreidx")
-    
-    elif attribute.lower() == 'slashburn':
-
-        gm_slashburn()
-        cur.execute("ALTER TABLE %s" % GM_TABLE +
-                    " ADD COLUMN slashburn integer")
-        cur.execute("UPDATE %s AS T" % GM_TABLE +
-                    " SET slashburn = C.slashburn" +
-                    " FROM %s C" % GM_SLASHBURN +
-                    " WHERE T.src_id = C.node_id")
-        cur.execute("CREATE INDEX coreidx" +
-                    " ON %s (slashburn)" % GM_TABLE)
-
-        cur.execute("CLUSTER VERBOSE %s" %GM_TABLE +
-                    " USING coreidx")
+        cur.execute("CREATE INDEX cluster_idx" +
+                    " ON %s " % GM_TABLE +
+                    "(sorting %s)" % cluster_order)
+        cur.execute("CLUSTER %s" % GM_TABLE +
+                    " USING cluster_idx")
 
 
 
@@ -1141,10 +1138,12 @@ def main():
                          parentheses, as shown in the syntax. However, the parentheses can be omitted \
                          if the expression has the form of a function call.')
 
-    parser.add_argument ('--node_ordering', dest='node_ordering', type=str, default='random',
-                         help='ordering the nodes of GM_TABLE by selected attributes: pagerank, coreness, \
-                         degree, slashnburn')
+    parser.add_argument ('--cluster_by', dest='cluster_by', type=str, default='random',
+                         help='ordering the nodes of GM_TABLE by selected attributes: page_rank, coreness, \
+                         in_degree, slashburn')
     
+    parser.add_argument ('--cluster_order', dest='cluster_order', type=str, default='ASC',
+                         help='ASC or DESC')
     
     
     
@@ -1174,8 +1173,8 @@ def main():
         cur.execute("SELECT count(*) from %s" % GM_NODES)
         num_nodes = cur.fetchone()[0]  
         
-        if args.node_ordering != 'random':
-            gm_node_reorder(cur, num_nodes, attribute=args.node_ordering )
+        gm_cluster(cur, num_nodes, cluster_by=args.cluster_by,
+                                   cluster_order=args.cluster_order)
 
 
         gm_create_index(cur, method=args.index_method,
