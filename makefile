@@ -23,17 +23,12 @@ run_soc-Slashdot0811:
 timing-play:
 	./stop_server.bash
 	./start_server.bash
-	wget https://snap.stanford.edu/data/soc-Slashdot0811.txt.gz
-	gunzip soc-Slashdot0811.txt.gz
-	grep -v "#" soc-Slashdot0811.txt > soc-Slashdot0811-nosharp.txt
-	mkdir -p `pwd`/output/soc-Slashdot0811
-	python gm_main.py --file `pwd`/soc-Slashdot0811-nosharp.txt --dest_dir `pwd`/output/soc-Slashdot0811 --delim '	' --unweighted --undirected --cluster_by=slashburn --cluster_order=ASC --index_method=btree --index_order_by="(src_id)" > test.timing
-	rm soc-Slashdot0811-nosharp.txt soc-Slashdot0811.txt
-	cat test.timing | grep Time
+	python gm_main.py --file `pwd`/test.txt --dest_dir `pwd`/output/timing_play --delim '	' --unweighted --undirected --index idx_src '(src_id)' False --index idx_dst '(dst_id)' True --reorder='none ASC'
+	#~ cat test.timing | grep Algorithm
+	#~ cat test.timing | grep Time
 
 
 run_com-amazon:
-	chmod a+rwx `pwd`
 	wget http://snap.stanford.edu/data/bigdata/communities/com-amazon.ungraph.txt.gz
 	gunzip com-amazon.ungraph.txt.gz
 	grep -v "#" com-amazon.ungraph.txt > com-amazon.ungraph-nosharp.txt

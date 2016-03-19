@@ -98,8 +98,6 @@ def gm_node_degrees ():
     # If the graph is undirected, all the degree values will be the same
     print "Computing Node degrees..."
     
-    start_time = time.time()
-    
     gm_sql_table_drop_create(db_conn, GM_NODE_DEGREES, "node_id integer, \
                              in_degree integer, out_degree integer")
     
@@ -114,9 +112,6 @@ def gm_node_degrees ():
                              " GROUP BY src_id) \"TAB\" " +
                              " GROUP BY node_id")
     db_conn.commit()
-    
-    print 'Time taken gm_node_degrees:', time.time() - start_time
-    
     cur.close()
 
        
@@ -161,8 +156,6 @@ def gm_pagerank (num_nodes, max_iterations = gm_param_pr_max_iter, \
     
     cur = db_conn.cursor();
     print "Computing PageRanks..."
-    
-    start_time = time.time()
     
     gm_sql_table_drop_create(db_conn, norm_table,"src_id integer, dst_id integer, weight double precision")
     
@@ -219,8 +212,6 @@ def gm_pagerank (num_nodes, max_iterations = gm_param_pr_max_iter, \
     gm_sql_table_drop(db_conn, next_table)
     gm_sql_table_drop(db_conn, norm_table)
     
-    print 'Time taken gm_pagerank:', time.time() - start_time
-    
     cur.close()
     
 # Task 3: Weakly Connected Components
@@ -237,29 +228,16 @@ def gm_connected_components (num_nodes):
                              "node_id integer, component_id integer", \
                              "node_id, component_id", "node_id, node_id")
     
-    #~ cur.execute("DROP INDEX IF EXISTS idx")
-    #~ cur.execute("CREATE INDEX idx"
-                    #~ " ON %s" % GM_CON_COMP +
-                    #~ " USING %s" % "btree" +
-                    #~ " %s" % "(node_id)")
-    #~ cur.execute("DROP INDEX IF EXISTS comp_idx")
-    #~ cur.execute("CREATE INDEX comp_idx"
-                    #~ " ON %s" % GM_CON_COMP +
-                    #~ " USING %s" % "btree" +
-                    #~ " %s" % "(component_id)")
-    
     while True:
         gm_sql_table_drop_create(db_conn, temp_table,"node_id integer, component_id integer")
         
-        
-        #~ cur.execute("EXPLAIN (ANALYZE, BUFFERS) SELECT node_id, MIN(component_id) \"component_id\" FROM (" +
-                        #~ " SELECT src_id \"node_id\", MIN(component_id) \"component_id\" FROM %s, %s" % (GM_TABLE_UNDIRECT,GM_CON_COMP) + 
-                        #~ " WHERE dst_id = node_id GROUP BY src_id" + 
-                        #~ " UNION" +
-                        #~ " SELECT * FROM %s" %  GM_CON_COMP +
-                    #~ " ) \"T\" GROUP BY node_id")
+        #~ cur.execute("EXPLAIN SELECT node_id, MIN(component_id) \"component_id\" FROM (" +
+                                #~ " SELECT src_id \"node_id\", MIN(component_id) \"component_id\" FROM %s, %s" % (GM_TABLE_UNDIRECT,GM_CON_COMP) + 
+                                #~ " WHERE dst_id = node_id GROUP BY src_id" + 
+                                #~ " UNION" +
+                                #~ " SELECT * FROM %s" %  GM_CON_COMP +
+                            #~ " ) \"T\" GROUP BY node_id")
         #~ print cur.fetchall()
-        
         
         # Set component id as the min{component ids of neighbours, node's componet id}
         cur.execute("INSERT INTO %s " % temp_table + 
@@ -320,6 +298,15 @@ def gm_all_radius (num_nodes, max_iter = gm_param_radius_max_iter):
         cur_hop_table = hop_table+str(cur_hop)
         prev_hop_table = hop_table+str(cur_hop-1)
         gm_sql_table_drop_create(db_conn, cur_hop_table,"node_id integer, hash integer")
+        
+        #~ cur.execute("EXPLAIN SELECT node_id, bit_or(hash) FROM ( " +
+                            #~ " SELECT src_id \"node_id\", bit_or(hash) \"hash\" " +
+                            #~ " FROM %s,%s" % (GM_TABLE_UNDIRECT, prev_hop_table) +
+                            #~ " WHERE dst_id = node_id GROUP BY src_id " +
+                            #~ " UNION ALL" +
+                            #~ " SELECT * FROM %s ) \"TAB\" GROUP BY node_id" % (prev_hop_table))
+        #~ print cur.fetchall()
+        
         cur.execute("INSERT INTO %s " % cur_hop_table +
                             " SELECT node_id, bit_or(hash) FROM ( " +
                             " SELECT src_id \"node_id\", bit_or(hash) \"hash\" " +
@@ -334,7 +321,7 @@ def gm_all_radius (num_nodes, max_iter = gm_param_radius_max_iter):
         
         print "Current Error = " + str(diff)
         if (diff==0):
-            print "Convergence acheived"    
+            print "Convergence achieved"    
             break
                                        
     nghbourhd_func = "2^(floor(log(2,hash)+1))/0.77351"
@@ -370,7 +357,6 @@ def gm_all_radius (num_nodes, max_iter = gm_param_radius_max_iter):
     
 
     cur.close()
-    
     print 'Time taken gm_all_radius:', time.time() - start_time
     
     
@@ -552,6 +538,15 @@ def gm_eigen (steps, num_nodes, err1, err2, adj_table=GM_TABLE_UNDIRECT):
         alph_1 = gm_sql_vect_dotproduct (db_conn, next_basis_vect, basis_vect_1, "id", "id", "value", "value")
         
         gm_sql_table_drop_create(db_conn, temp_vect,"id integer, value double precision")
+        
+        #~ cur.execute("EXPLAIN SELECT \"VECT_NEW\".id, " +
+                        #~ " (\"VECT_NEW\".value - (%s * \"VECT_0\".value) - (%s * \"VECT_1\".value)) \"value\"" % 
+                                                                #~ (beta_0, alph_1) + 
+                        #~ " FROM %s \"VECT_NEW\", %s \"VECT_0\", %s \"VECT_1\" " % 
+                                                                #~ (next_basis_vect, basis_vect_0, basis_vect_1) +
+                        #~ " WHERE \"VECT_NEW\".id = \"VECT_0\".id AND \"VECT_0\".id = \"VECT_1\".id")
+        #~ print cur.fetchall()
+        
         # Orthogonalize with previous two basis vectors
         cur.execute("INSERT INTO %s " % (temp_vect) +
                         " (SELECT \"VECT_NEW\".id, " +
@@ -858,8 +853,6 @@ def gm_node_coreness():
     # Create Table to store node coreness
     print "Computing Node coreness..."
     
-    start_time = time.time()
-    
     # Initialize an output list L.
     list_L = []
     
@@ -930,9 +923,6 @@ def gm_node_coreness():
                 #~ " ORDER BY node_id")
     #~ print cur.fetchall()
     db_conn.commit()
-    
-    print 'Time taken gm_node_coreness:', time.time() - start_time
-    
     cur.close()
 
 
@@ -968,27 +958,72 @@ def gm_degeneracy():
     cur.close()
 
 
+# Phase 2: reorder nodes
+#
+# Input arguments:
+#   reorder: 'none', 'random', 'in_degree', 'page_rank', 'coreness', 'slashburn'
+def gm_node_reorder(reorder='none'):
+    global GM_TABLE, GM_TABLE_UNDIRECT
+    cur = db_conn.cursor()
+    cur.execute("SELECT * FROM %s ORDER BY node_id" % GM_NODES)
+    new_node = cur.fetchall()
+    method = reorder.split()[0].lower()
+    table_dict = {'in_degree':  GM_NODE_DEGREES,
+                  'page_rank':  GM_PAGERANK,
+                  'coreness':   GM_NODE_CORENESS,
+                  'slashburn':  GM_SLASHBURN}
+    if method == 'none':
+        return
+    elif method == 'random':
+        node = random.sample(new_node, len(new_node))
+    else:
+        cur.execute("SELECT node_id"
+                    " FROM %s" % table_dict[method] +
+                    " ORDER BY %s" % reorder)
+        node = cur.fetchall()
+    rename = [(no[0], new[0]) for (no, new) in zip(node, new_node)]
+    gm_sql_table_drop_create(db_conn, GM_NEWNAME,
+                             "node_id integer, random integer")
+    cur.execute("INSERT INTO %s" % GM_NEWNAME +
+                " VALUES %s" % str(rename).replace('[','').replace(']',''))
+    cur.execute("ALTER TABLE %s" % GM_TABLE +
+                " ADD COLUMN new_src_id integer")
+    cur.execute("UPDATE %s T" % GM_TABLE +
+                " SET new_src_id = N.random" +
+                " FROM %s N" % GM_NEWNAME +
+                " WHERE T.src_id = N.node_id")
+    cur.execute("ALTER TABLE %s" % GM_TABLE +
+                " ADD COLUMN new_dst_id integer")
+    cur.execute("UPDATE %s T" % GM_TABLE +
+                " SET new_dst_id = N.random" +
+                " FROM %s N" % GM_NEWNAME +
+                " WHERE T.dst_id = N.node_id")
+    gm_sql_table_drop_create(db_conn, GM_TABLE_NEW,
+                             "src_id integer, dst_id integer, weight real")
+    cur.execute("INSERT INTO %s" % GM_TABLE_NEW +
+                " (SELECT new_src_id, new_dst_id, weight FROM %s)" % GM_TABLE)
+    GM_TABLE = GM_TABLE_NEW
+    GM_TABLE_UNDIRECT = GM_TABLE_NEW
+    db_conn.commit()
+
 # Phase 2: creating index
 #
 # Input arguments:
-#   method: none, btree, hash, gist, or gin
-#   order_by: any column (or expression) already in GM_TABLE
+#   name: index name
+#   on: any column (or expression) already in GM_TABLE
+#   cluster: True to cluster
 #-----------------------------------------------------------------------------#
-def gm_create_index(cur, method="none", order_by="(src_id)"):
-    
-    if method.lower() != "none":
-        print ("Creating index using %s" % method +
-              " on %s" % order_by)
-        cur.execute("DROP INDEX IF EXISTS idx")
-        cur.execute("CREATE INDEX idx"
-                    " ON %s" % GM_TABLE +
-                    " USING %s" % method +
-                    " %s" % order_by)
-        cur.execute("DROP INDEX IF EXISTS idx2")
-        cur.execute("CREATE INDEX idx2"
-                    " ON %s" % GM_TABLE +
-                    " USING %s" % method +
-                    " %s" % "(dst_id)")
+def gm_create_index(name='idx', on="(src_id)", cluster=False):
+    cur = db_conn.cursor()
+    cur.execute("DROP INDEX IF EXISTS %s" % name)
+    print ("Creating index on %s" % on)
+    cur.execute("CREATE INDEX %s" % name +
+                " ON %s" % GM_TABLE +
+                " %s" % on)
+    if cluster:
+        cur.execute("CLUSTER %s" % GM_TABLE +
+                    " USING %s" % name)
+    db_conn.commit()
     
 
 # Phase 2: SlashBurn
@@ -1000,7 +1035,7 @@ def gm_slashburn():
     from scipy.sparse.csgraph import connected_components
     cur = db_conn.cursor()
     
-    # Create Table to store node coreness
+    # Create Table to store slashburn
     print "Computing SlashBurn..."
     
     cur.execute("SELECT src_id AS node_id, ARRAY_AGG(dst_id)" +
@@ -1029,64 +1064,38 @@ def gm_slashburn():
     hub_order = []
     nongcc_order = []
     while len(gcc_ind) > k:
+        # find gcc's degree
         gcc = adj_mat[gcc_ind, :].tocsc()[:, gcc_ind].tocsr()
         gcc_degree = np.array(gcc.sum(axis=1)).ravel()
         sorted_ind = np.argsort(-gcc_degree)
-        hub_ind = list(np.array(gcc_ind)[sorted_ind[0:k]])
         
-        # ???
+        # add hub to the beginning of the output order
+        hub_ind = list(np.array(gcc_ind)[sorted_ind[0:k]])
         hub_order = list(hub_ind) + hub_order
         
+        # remove hub and find connected components
         broken_ind = list(set(gcc_ind) - set(hub_ind))
         broken = adj_mat[broken_ind, :].tocsc()[:, broken_ind].tocsr()
         (num_comp, labels) = connected_components(csgraph=broken)
         
+        # add non-gcc to the end of the output order
         broken_degree = np.array(broken.sum(axis=1)).ravel()
         desc_pieces = np.argsort(-broken_degree[labels > 0])
-        
         nongcc_ind = list(np.array(broken_ind)[labels > 0][desc_pieces])
         nongcc_order += nongcc_ind
         gcc_ind = list(np.array(broken_ind)[labels == 0])
+    
+    # total slashburn order
     slashburn_order = list(np.array(node_name)[hub_order + nongcc_order])
     slashburn = [(sb, nid) for (nid, sb) in zip(node_name, slashburn_order)]
+    
+    # put slashburn in a table
     gm_sql_table_drop_create(db_conn, GM_SLASHBURN,
                              "node_id integer, slashburn integer")
     cur.execute("INSERT INTO %s" % GM_SLASHBURN +
                 " VALUES %s" % str(slashburn).replace('[','').replace(']',''))
     db_conn.commit()                        
     cur.close()
-
-# Phase 2: clustering
-#   cluster_by:     'random', 'in_degree', 'page_rank', or 'slashburn'
-#   cluster_order:  'ASC' or 'DESC'
-#-----------------------------------------------------------------------------#
-def gm_cluster(cur, num_nodes, cluster_by='random', cluster_order='ASC'):
-    if cluster_by.lower() != 'random':
-        print "Table clustering by %s..." % cluster_by
-        # some algorithm requires GM_NODE_DEGREES
-        gm_node_degrees()
-        if cluster_by.lower() == 'in_degree':
-            table_name = GM_NODE_DEGREES
-        elif cluster_by.lower() == 'page_rank':
-            gm_pagerank(num_nodes)
-            table_name = GM_PAGERANK
-        elif cluster_by.lower() == 'coreness':
-            gm_node_coreness()
-            table_name = GM_NODE_CORENESS
-        elif cluster_by.lower() == 'slashburn':
-            gm_slashburn()
-            table_name = GM_SLASHBURN
-        cur.execute("ALTER TABLE %s" % GM_TABLE +
-                    " ADD COLUMN sorting integer")
-        cur.execute("UPDATE %s AS T" % GM_TABLE +
-                    " SET sorting = N.%s" % cluster_by +
-                    " FROM %s N" % table_name +
-                    " WHERE T.src_id = N.node_id")
-        cur.execute("CREATE INDEX cluster_idx" +
-                    " ON %s " % GM_TABLE +
-                    "(sorting %s)" % cluster_order)
-        cur.execute("CLUSTER %s" % GM_TABLE +
-                    " USING cluster_idx")
 
 
 
@@ -1128,24 +1137,15 @@ def main():
                          The prior beliefs are expected to be centered around 0. i.e. positive \
                          nodes have priors >0, negative nodes <0 and unknown nodes 0. ')
     
-    parser.add_argument ('--index_method', dest='index_method', type=str, default='none',
-                         help='Indexing method. Choices are none, btree, hash, gist, spgist and gin. \
-                         The default method is none, i.e., no index.')
+    parser.add_argument ('--index', nargs=3, action='append', default=None,
+                         help='Add an index on GM_TABLE. Format is --index name on cluster.'
+                         ' Can be used multiple times.\n'
+                         'Example: --index idx_src (src_id) False')
     
-    parser.add_argument ('--index_order_by', dest='index_order_by', type=str, default='(src_id)',
-                         help='Indexing column or expression. An expression based on one or more \
-                         columns of the table. The expression usually must be written with surrounding \
-                         parentheses, as shown in the syntax. However, the parentheses can be omitted \
-                         if the expression has the form of a function call.')
-
-    parser.add_argument ('--cluster_by', dest='cluster_by', type=str, default='random',
-                         help='ordering the nodes of GM_TABLE by selected attributes: page_rank, coreness, \
-                         in_degree, slashburn')
-    
-    parser.add_argument ('--cluster_order', dest='cluster_order', type=str, default='ASC',
-                         help='ASC or DESC')
-    
-    
+    parser.add_argument ('--reorder', dest='reorder', type=str, default='none',
+                         help='Node reordering scheme.'
+                         ' Choices are none, random, in_degree, coreness, page_rank, and slashburn.'
+                         ' Example: --reorder="page_rank ASC"')
     
     args = parser.parse_args()
     
@@ -1173,43 +1173,45 @@ def main():
         cur.execute("SELECT count(*) from %s" % GM_NODES)
         num_nodes = cur.fetchone()[0]  
         
-        gm_cluster(cur, num_nodes, cluster_by=args.cluster_by,
-                                   cluster_order=args.cluster_order)
-
-
-        gm_create_index(cur, method=args.index_method,
-                             order_by=args.index_order_by)
-        
         random.seed(15826)
         
-        start_time = time.time()
+        # degree related
+        gm_node_degrees()
+        gm_degree_distribution(args.undirected) # Degree distribution
         
-        gm_node_degrees() # timing
-        
-        # Tasks
-        # phase 1: coreness of nodes
-        gm_node_coreness() # timing
+        # coreness related
+        gm_node_coreness()
         gm_coreness_distribution()
         gm_degeneracy()
         
-        gm_degree_distribution(args.undirected)                 # Degree distribution
+        # potential optimal orderings
+        gm_pagerank(num_nodes)  # Pagerank
+        gm_slashburn()
         
-        gm_pagerank(num_nodes)  # timing                                  # Pagerank
-        gm_connected_components(num_nodes)  # timing                     # Connected components
-        gm_eigen(gm_param_eig_max_iter, num_nodes, gm_param_eig_thres1, gm_param_eig_thres2)     # timing
-        gm_all_radius(num_nodes)      # timing
+        random.seed(15826)
+        gm_node_reorder(reorder=args.reorder)
+        
+        if args.index:
+            for index in args.index:
+                gm_create_index(*tuple(index))
+        
+        random.seed(15826)
+        start_time = time.time()
+        
+        # Tasks
+        gm_connected_components(num_nodes)  # Connected components (timing)
+        gm_eigen(gm_param_eig_max_iter, num_nodes, gm_param_eig_thres1, gm_param_eig_thres2)     # (timing)
+        gm_all_radius(num_nodes)      # (timing)
         if (args.belief_file):
-            gm_belief_propagation(args.belief_file, args.delimiter, args.undirected) # timing
+            gm_belief_propagation(args.belief_file, args.delimiter, args.undirected) # (timing)
         gm_eigen_triangle_count()
         #gm_naive_triangle_count()
+        
+        print 'Time taken total:', time.time() - start_time
 
         # Save tables to disk
         gm_save_tables(args.dest_dir, args.belief_file)
         #gm_anomaly_detection()
-        
-        
-        print 'Time taken total:', time.time() - start_time
-        
         
         gm_db_bubye(db_conn)
     except:

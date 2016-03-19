@@ -3,4 +3,4 @@ demo_index:
 	python gm_main.py --file `pwd`/samplegraph.txt --dest_dir `pwd`/output --belief_file `pwd`/priorsbelief.txt --unweighted --undirected --index_method=btree --index_order_by="(src_id, dst_id)" --index_clustering=True
 
 debug:
-	python gm_main.py --file `pwd`/testslashburn.txt --dest_dir `pwd`/output --unweighted --undirected --cluster_by=slashburn --cluster_order=ASC --index_method=btree --index_order_by="(src_id)"
+	python gm_main.py --file `pwd`/testslashburn.txt --dest_dir `pwd`/output --unweighted --undirected --index btree '(src_id)' False --index btree '(dst_id)' True
