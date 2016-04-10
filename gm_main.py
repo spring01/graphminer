@@ -963,6 +963,7 @@ def gm_degeneracy():
 # Input arguments:
 #   reorder: 'none', 'random', 'in_degree', 'page_rank', 'coreness', 'slashburn'
 def gm_node_reorder(reorder='none'):
+    print ("Node reordering by %s" % reorder)
     global GM_TABLE, GM_TABLE_UNDIRECT
     cur = db_conn.cursor()
     cur.execute("SELECT * FROM %s ORDER BY node_id" % GM_NODES)
@@ -986,18 +987,23 @@ def gm_node_reorder(reorder='none'):
                              "node_id integer, random integer")
     cur.execute("INSERT INTO %s" % GM_NEWNAME +
                 " VALUES %s" % str(rename).replace('[','').replace(']',''))
+    db_conn.commit()
     cur.execute("ALTER TABLE %s" % GM_TABLE +
                 " ADD COLUMN new_src_id integer")
+    db_conn.commit()
     cur.execute("UPDATE %s T" % GM_TABLE +
                 " SET new_src_id = N.random" +
                 " FROM %s N" % GM_NEWNAME +
                 " WHERE T.src_id = N.node_id")
+    db_conn.commit()
     cur.execute("ALTER TABLE %s" % GM_TABLE +
                 " ADD COLUMN new_dst_id integer")
+    db_conn.commit()
     cur.execute("UPDATE %s T" % GM_TABLE +
                 " SET new_dst_id = N.random" +
                 " FROM %s N" % GM_NEWNAME +
                 " WHERE T.dst_id = N.node_id")
+    db_conn.commit()
     gm_sql_table_drop_create(db_conn, GM_TABLE_NEW,
                              "src_id integer, dst_id integer, weight real")
     cur.execute("INSERT INTO %s" % GM_TABLE_NEW +
@@ -1071,7 +1077,7 @@ def gm_slashburn():
         
         # add hub to the beginning of the output order
         hub_ind = list(np.array(gcc_ind)[sorted_ind[0:k]])
-        hub_order = list(hub_ind) + hub_order
+        hub_order += list(hub_ind)
         
         # remove hub and find connected components
         broken_ind = list(set(gcc_ind) - set(hub_ind))
@@ -1082,7 +1088,7 @@ def gm_slashburn():
         broken_degree = np.array(broken.sum(axis=1)).ravel()
         desc_pieces = np.argsort(-broken_degree[labels > 0])
         nongcc_ind = list(np.array(broken_ind)[labels > 0][desc_pieces])
-        nongcc_order += nongcc_ind
+        nongcc_order = nongcc_ind + nongcc_order
         gcc_ind = list(np.array(broken_ind)[labels == 0])
     
     # total slashburn order
@@ -1211,7 +1217,7 @@ def main():
 
         # Save tables to disk
         gm_save_tables(args.dest_dir, args.belief_file)
-        #gm_anomaly_detection()
+        gm_anomaly_detection()
         
         gm_db_bubye(db_conn)
     except:

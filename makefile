@@ -2,6 +2,11 @@ demo:
 	chmod a+rwx `pwd`
 	python gm_main.py --file `pwd`/samplegraph.txt --dest_dir `pwd`/output --belief_file `pwd`/priorsbelief.txt --unweighted --undirected
 
+play:
+	util/stop_server.bash
+	util/start_server.bash
+	python gm_main.py --file `pwd`/test2.txt --dest_dir `pwd`/output --delim '	' --unweighted --undirected --reorder='page_rank DESC'
+
 run_soc-Epinions1:
 	chmod a+rwx `pwd`
 	wget http://snap.stanford.edu/data/soc-Epinions1.txt.gz
@@ -20,12 +25,31 @@ run_soc-Slashdot0811:
 	python gm_main.py --file `pwd`/soc-Slashdot0811-nosharp.txt --dest_dir `pwd`/output/soc-Slashdot0811 --delim '	' --unweighted --undirected
 	rm soc-Slashdot0811-nosharp.txt soc-Slashdot0811.txt
 
+timing-play3:
+	./stop_server.bash
+	./start_server.bash
+	wget http://snap.stanford.edu/data/${base_name}.txt.gz
+	gunzip -f ${base_name}.txt.gz
+	grep -v "#" ${base_name}.txt > ${base_name}-nosharp.txt
+	python gm_main.py --file `pwd`/${base_name}-nosharp.txt --dest_dir `pwd`/output/timing_play --delim ${delim} --unweighted --undirected ${index_setting} ${order_setting}
+	rm ${base_name}-nosharp.txt ${base_name}.txt
+
+timing-play2:
+	./stop_server.bash
+	./start_server.bash
+	wget http://snap.stanford.edu/data/soc-Epinions1.txt.gz
+	gunzip soc-Epinions1.txt.gz
+	grep -v "#" soc-Epinions1.txt > soc-Epinions1-nosharp.txt
+	python gm_main.py --file `pwd`/soc-Epinions1-nosharp.txt --dest_dir `pwd`/output/timing_play --delim '	' --unweighted --undirected --index idx_src '(src_id)' False --index idx_dst '(dst_id)' True --reorder='random ASC'
+	rm soc-Epinions1-nosharp.txt soc-Epinions1.txt
+
 timing-play:
 	./stop_server.bash
 	./start_server.bash
-	python gm_main.py --file `pwd`/test.txt --dest_dir `pwd`/output/timing_play --delim '	' --unweighted --undirected --index idx_src '(src_id)' False --index idx_dst '(dst_id)' True --reorder='none ASC'
-	#~ cat test.timing | grep Algorithm
-	#~ cat test.timing | grep Time
+	wget http://snap.stanford.edu/data/twitter_combined.txt.gz
+	gunzip -f twitter_combined.txt.gz
+	python gm_main.py --file `pwd`/twitter_combined.txt --dest_dir `pwd`/output/timing_play --delim ' ' --unweighted --undirected --index idx_src '(src_id)' False --index idx_dst '(dst_id)' True --reorder='page_rank ASC'
+	rm twitter_combined.txt
 
 
 run_com-amazon:
@@ -33,7 +57,7 @@ run_com-amazon:
 	gunzip com-amazon.ungraph.txt.gz
 	grep -v "#" com-amazon.ungraph.txt > com-amazon.ungraph-nosharp.txt
 	mkdir -p `pwd`/output/com-amazon
-	python gm_main.py --file `pwd`/com-amazon.ungraph-nosharp.txt --dest_dir `pwd`/output/com-amazon --delim '	' --unweighted --undirected
+	python gm_main.py --file `pwd`/com-amazon.ungraph-nosharp.txt --dest_dir `pwd`/output/com-amazon --delim '	' --unweighted --undirected --index idx_src '(src_id)' False --index idx_dst '(dst_id)' True --reorder='none ASC'
 	rm com-amazon.ungraph.txt com-amazon.ungraph-nosharp.txt
 
 run_email-Enron:
