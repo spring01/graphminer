@@ -1,6 +1,9 @@
-demo_index:
-	chmod a+rwx `pwd`
-	python gm_main.py --file `pwd`/samplegraph.txt --dest_dir `pwd`/output --belief_file `pwd`/priorsbelief.txt --unweighted --undirected --index_method=btree --index_order_by="(src_id, dst_id)" --index_clustering=True
+demo:
+	wget http://snap.stanford.edu/data/twitter_combined.txt.gz
+	gunzip -f twitter_combined.txt.gz
+	grep -v "#" twitter_combined.txt > twitter_combined-nosharp.txt
+	python gm_main.py --file `pwd`/twitter_combined-nosharp.txt --dest_dir `pwd`/output --delim ' ' --unweighted --undirected --index idx_src '(src_id)' False --index idx_comp '(src_id, dst_id)' False --index idx_dst '(dst_id)' True
+	rm twitter_combined-nosharp.txt twitter_combined.txt
 
 debug:
 	python gm_main.py --file `pwd`/testslashburn.txt --dest_dir `pwd`/output --unweighted --undirected --index btree '(src_id)' False --index btree '(dst_id)' True

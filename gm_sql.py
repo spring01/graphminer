@@ -168,12 +168,6 @@ def gm_sql_vector_random (db_conn, vector):
 def gm_sql_adj_vect_multiply (db_conn, mat, vect, dest_vect, key1, key2, dest_key, val1, dest_val, gby):
     cur = db_conn.cursor();
     
-    #~ cur.execute("EXPLAIN SELECT \"MAT\".%s \"%s\", sum(\"VECT\".%s) \"%s\"" % (gby, dest_key, val1, dest_val) +
-                    #~ " FROM %s \"MAT\", %s \"VECT\"" % (mat, vect) +
-                    #~ " WHERE \"MAT\".%s = \"VECT\".%s " % (key1, key2) +
-                    #~ " GROUP BY %s" % (gby))
-    #~ print cur.fetchall()
-    
     cur.execute("INSERT INTO %s " % (dest_vect) +
                     "(SELECT \"MAT\".%s \"%s\", sum(\"VECT\".%s) \"%s\"" % (gby, dest_key, val1, dest_val) +
                     " FROM %s \"MAT\", %s \"VECT\"" % (mat, vect) +

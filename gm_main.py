@@ -62,8 +62,6 @@ def gm_save_tables (dest_dir, belief):
     # phase 1 tables
     gm_sql_save_table_to_file(db_conn, GM_NODE_CORENESS, "node_id, coreness", \
                                   os.path.join(dest_dir,"coreness.csv"), ",");
-    gm_sql_save_table_to_file(db_conn, GM_DEGENERACY, "degeneracy", \
-                                  os.path.join(dest_dir,"degeneracy.csv"), ",");
     gm_sql_save_table_to_file(db_conn, GM_CORENESS_DISTRIBUTION, "coreness, count", \
                                   os.path.join(dest_dir,"corenessdist.csv"), ",");
 
@@ -85,6 +83,13 @@ def gm_save_tables (dest_dir, belief):
                                   
     gm_sql_save_table_to_file(db_conn, GM_EIG_VECTORS, "row_id, col_id, value", \
                                   os.path.join(dest_dir,"eigvec.csv"), ",");
+    
+    # anomaly detection table
+    gm_sql_save_table_to_file(db_conn, GM_EGONET, "node_id, edge_cnt, wgt_sum", \
+                                  os.path.join(dest_dir,"egonet.csv"), ",");
+    gm_sql_save_table_to_file(db_conn, GM_ANOM_SCORE, "node_id, score", \
+                                  os.path.join(dest_dir,"anomscore.csv"), ",");
+    
                                   
 
 #Project Tasks
@@ -231,14 +236,6 @@ def gm_connected_components (num_nodes):
     while True:
         gm_sql_table_drop_create(db_conn, temp_table,"node_id integer, component_id integer")
         
-        #~ cur.execute("EXPLAIN SELECT node_id, MIN(component_id) \"component_id\" FROM (" +
-                                #~ " SELECT src_id \"node_id\", MIN(component_id) \"component_id\" FROM %s, %s" % (GM_TABLE_UNDIRECT,GM_CON_COMP) + 
-                                #~ " WHERE dst_id = node_id GROUP BY src_id" + 
-                                #~ " UNION" +
-                                #~ " SELECT * FROM %s" %  GM_CON_COMP +
-                            #~ " ) \"T\" GROUP BY node_id")
-        #~ print cur.fetchall()
-        
         # Set component id as the min{component ids of neighbours, node's componet id}
         cur.execute("INSERT INTO %s " % temp_table + 
                             " SELECT node_id, MIN(component_id) \"component_id\" FROM (" +
@@ -298,14 +295,6 @@ def gm_all_radius (num_nodes, max_iter = gm_param_radius_max_iter):
         cur_hop_table = hop_table+str(cur_hop)
         prev_hop_table = hop_table+str(cur_hop-1)
         gm_sql_table_drop_create(db_conn, cur_hop_table,"node_id integer, hash integer")
-        
-        #~ cur.execute("EXPLAIN SELECT node_id, bit_or(hash) FROM ( " +
-                            #~ " SELECT src_id \"node_id\", bit_or(hash) \"hash\" " +
-                            #~ " FROM %s,%s" % (GM_TABLE_UNDIRECT, prev_hop_table) +
-                            #~ " WHERE dst_id = node_id GROUP BY src_id " +
-                            #~ " UNION ALL" +
-                            #~ " SELECT * FROM %s ) \"TAB\" GROUP BY node_id" % (prev_hop_table))
-        #~ print cur.fetchall()
         
         cur.execute("INSERT INTO %s " % cur_hop_table +
                             " SELECT node_id, bit_or(hash) FROM ( " +
@@ -538,14 +527,6 @@ def gm_eigen (steps, num_nodes, err1, err2, adj_table=GM_TABLE_UNDIRECT):
         alph_1 = gm_sql_vect_dotproduct (db_conn, next_basis_vect, basis_vect_1, "id", "id", "value", "value")
         
         gm_sql_table_drop_create(db_conn, temp_vect,"id integer, value double precision")
-        
-        #~ cur.execute("EXPLAIN SELECT \"VECT_NEW\".id, " +
-                        #~ " (\"VECT_NEW\".value - (%s * \"VECT_0\".value) - (%s * \"VECT_1\".value)) \"value\"" % 
-                                                                #~ (beta_0, alph_1) + 
-                        #~ " FROM %s \"VECT_NEW\", %s \"VECT_0\", %s \"VECT_1\" " % 
-                                                                #~ (next_basis_vect, basis_vect_0, basis_vect_1) +
-                        #~ " WHERE \"VECT_NEW\".id = \"VECT_0\".id AND \"VECT_0\".id = \"VECT_1\".id")
-        #~ print cur.fetchall()
         
         # Orthogonalize with previous two basis vectors
         cur.execute("INSERT INTO %s " % (temp_vect) +
@@ -844,6 +825,39 @@ def gm_anomaly_detection():
     db_conn.commit();
     print "Time taken = " + str(time.time()-start_time)
 
+# Anomaly detection score obtained by linear fitting on log-log scale
+def gm_anomaly_detection_score(table_x=(GM_NODE_DEGREES, "in_degree + 1"),
+                               table_y=(GM_EGONET, "edge_cnt")):
+    from scipy.stats import linregress
+    import numpy as np
+    
+    col_x = table_x[1]
+    col_y = table_y[1]
+    print "Computing anomaly detection scores..."
+    print "According to power law between (%s)" % col_x + " and (%s)" % col_y
+    cur = db_conn.cursor()
+    cur.execute("SELECT x.node_id, %s" % col_x + ", %s" % col_y +
+                " FROM %s" % table_x[0] + " AS x, %s AS y" % table_y[0] +
+                " WHERE x.node_id = y.node_id")
+    id_x_y = cur.fetchall()
+    node_id = [ele[0] for ele in id_x_y]
+    val_x = np.array([np.log(float(ele[1])) for ele in id_x_y])
+    val_y = np.array([np.log(float(ele[2])) for ele in id_x_y])
+    (slope, intercept, r_value, p_value, stderr) = linregress(val_x, val_y)
+    print "Power law linear fitting done, r-squared = %s" % r_value
+    hor_dist = np.abs(val_x - (val_y - intercept) / slope)
+    ver_dist = np.abs(val_y - (slope * val_x + intercept))
+    
+    # use the area trick
+    score = hor_dist * ver_dist / (np.sqrt(hor_dist**2 + ver_dist**2))
+    list_score = zip(node_id, score)
+    gm_sql_table_drop_create(db_conn, GM_ANOM_SCORE,
+                            "node_id integer, score double precision")
+    cur.execute("INSERT INTO %s" % GM_ANOM_SCORE +
+                " VALUES %s" % str(list_score).replace('[','').replace(']',''))
+    db_conn.commit()
+    cur.close()
+
 
 # Phase 1: coreness of nodes
 #----------------------------------------------------------------------#
@@ -943,21 +957,6 @@ def gm_coreness_distribution():
     db_conn.commit()                        
     cur.close()
 
-
-
-# Phase 1: degeneracy of the graph
-#-----------------------------------------------------------------------------#
-def gm_degeneracy():
-    
-    cur = db_conn.cursor()
-    print "Computing degeneracy of the graph..."
-    gm_sql_table_drop_create(db_conn, GM_DEGENERACY, "degeneracy integer")
-    cur.execute ("INSERT INTO %s" % GM_DEGENERACY +
-                 " SELECT MAX(coreness) AS degeneracy FROM %s" % GM_NODE_CORENESS);
-    db_conn.commit()                        
-    cur.close()
-
-
 # Phase 2: reorder nodes
 #
 # Input arguments:
@@ -1022,10 +1021,12 @@ def gm_node_reorder(reorder='none'):
 def gm_create_index(name='idx', on="(src_id)", cluster=False):
     cur = db_conn.cursor()
     cur.execute("DROP INDEX IF EXISTS %s" % name)
+    db_conn.commit()
     print ("Creating index on %s" % on)
     cur.execute("CREATE INDEX %s" % name +
                 " ON %s" % GM_TABLE +
                 " %s" % on)
+    db_conn.commit()
     if cluster:
         cur.execute("CLUSTER %s" % GM_TABLE +
                     " USING %s" % name)
@@ -1188,7 +1189,6 @@ def main():
         # coreness related
         gm_node_coreness()
         gm_coreness_distribution()
-        gm_degeneracy()
         
         # potential optimal orderings
         gm_pagerank(num_nodes)  # Pagerank
@@ -1212,12 +1212,14 @@ def main():
             gm_belief_propagation(args.belief_file, args.delimiter, args.undirected) # (timing)
         gm_eigen_triangle_count()
         #gm_naive_triangle_count()
+        gm_anomaly_detection()
+        
+        gm_anomaly_detection_score()
         
         print 'Time taken total:', time.time() - start_time
 
         # Save tables to disk
         gm_save_tables(args.dest_dir, args.belief_file)
-        gm_anomaly_detection()
         
         gm_db_bubye(db_conn)
     except:

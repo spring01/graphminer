@@ -51,12 +51,12 @@ GM_EGONET = "GM_EGONET"
 
 # phase 1: coreness of nodes
 GM_NODE_CORENESS = "GM_NODE_CORENESS"
-GM_DEGENERACY = "GM_DEGENERACY"
 GM_CORENESS_DISTRIBUTION = "GM_CORENESS_DISTRIBUTION"
 
 # phase 2: slashburn
 GM_SLASHBURN = "GM_SLASHBURN"
 
-
+# phase 3: anomaly detection score
+GM_ANOM_SCORE = "GM_ANOM_SCORE"
 
 
