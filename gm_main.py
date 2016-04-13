@@ -47,47 +47,50 @@ def gm_create_node_table ():
                             
     cur.close()
     
-def gm_save_tables (dest_dir, belief):
+def gm_save_tables (dest_dir, belief, unittest):
     print "Saving tables..."
-    gm_sql_save_table_to_file(db_conn, GM_DEGREE_DISTRIBUTION, "degree, count", \
+    gm_sql_save_table_to_file(db_conn, GM_DEGREE_DISTRIBUTION, "degree, count",
                                   os.path.join(dest_dir,"degreedist.csv"), ",");
-    gm_sql_save_table_to_file(db_conn, GM_INDEGREE_DISTRIBUTION, "degree, count", \
+    gm_sql_save_table_to_file(db_conn, GM_INDEGREE_DISTRIBUTION, "degree, count",
                                   os.path.join(dest_dir,"indegreedist.csv"), ",");
-    gm_sql_save_table_to_file(db_conn, GM_OUTDEGREE_DISTRIBUTION, "degree, count", \
+    gm_sql_save_table_to_file(db_conn, GM_OUTDEGREE_DISTRIBUTION, "degree, count",
                                   os.path.join(dest_dir,"outdegreedist.csv"), ",");
 
-    gm_sql_save_table_to_file(db_conn, GM_NODE_DEGREES, "node_id, in_degree, out_degree", \
+    gm_sql_save_table_to_file(db_conn, GM_NODE_DEGREES, "node_id, in_degree, out_degree",
                                   os.path.join(dest_dir,"degree.csv"), ",");
     
     # phase 1 tables
-    gm_sql_save_table_to_file(db_conn, GM_NODE_CORENESS, "node_id, coreness", \
+    gm_sql_save_table_to_file(db_conn, GM_NODE_CORENESS, "node_id, coreness",
                                   os.path.join(dest_dir,"coreness.csv"), ",");
-    gm_sql_save_table_to_file(db_conn, GM_CORENESS_DISTRIBUTION, "coreness, count", \
+    gm_sql_save_table_to_file(db_conn, GM_CORENESS_DISTRIBUTION, "coreness, count",
                                   os.path.join(dest_dir,"corenessdist.csv"), ",");
-
-    gm_sql_save_table_to_file(db_conn, GM_PAGERANK, "node_id, page_rank", \
+    
+    # original graph mining tables
+    gm_sql_save_table_to_file(db_conn, GM_PAGERANK, "node_id, page_rank",
                                   os.path.join(dest_dir,"pagerank.csv"), ",");
                                   
-    gm_sql_save_table_to_file(db_conn, GM_CON_COMP, "node_id, component_id", \
+    gm_sql_save_table_to_file(db_conn, GM_CON_COMP, "node_id, component_id",
                                   os.path.join(dest_dir,"conncomp.csv"), ",");
 
-    gm_sql_save_table_to_file(db_conn, GM_RADIUS, "node_id, radius", \
+    gm_sql_save_table_to_file(db_conn, GM_RADIUS, "node_id, radius",
                                   os.path.join(dest_dir,"radius.csv"), ",");
                         
     if (belief):
-         gm_sql_save_table_to_file(db_conn, GM_BELIEF, "node_id, belief", \
+         gm_sql_save_table_to_file(db_conn, GM_BELIEF, "node_id, belief",
                                   os.path.join(dest_dir,"belief.csv"), ",");
-
-    gm_sql_save_table_to_file(db_conn, GM_EIG_VALUES, "id, value", \
-                                  os.path.join(dest_dir,"eigval.csv"), ",");
-                                  
-    gm_sql_save_table_to_file(db_conn, GM_EIG_VECTORS, "row_id, col_id, value", \
-                                  os.path.join(dest_dir,"eigvec.csv"), ",");
     
-    # anomaly detection table
-    gm_sql_save_table_to_file(db_conn, GM_EGONET, "node_id, edge_cnt, wgt_sum", \
+    if not unittest:
+        # eigenvalue/eigenvector tables
+        gm_sql_save_table_to_file(db_conn, GM_EIG_VALUES, "id, value",
+                                  os.path.join(dest_dir,"eigval.csv"), ",");
+                                      
+        gm_sql_save_table_to_file(db_conn, GM_EIG_VECTORS, "row_id, col_id, value",
+                                  os.path.join(dest_dir,"eigvec.csv"), ",");
+        
+        # anomaly detection table
+        gm_sql_save_table_to_file(db_conn, GM_EGONET, "node_id, edge_cnt, wgt_sum",
                                   os.path.join(dest_dir,"egonet.csv"), ",");
-    gm_sql_save_table_to_file(db_conn, GM_ANOM_SCORE, "node_id, score", \
+        gm_sql_save_table_to_file(db_conn, GM_ANOM_SCORE, "node_id, score_en, score_we",
                                   os.path.join(dest_dir,"anomscore.csv"), ",");
     
                                   
@@ -825,34 +828,49 @@ def gm_anomaly_detection():
     db_conn.commit();
     print "Time taken = " + str(time.time()-start_time)
 
-# Anomaly detection score obtained by linear fitting on log-log scale
-def gm_anomaly_detection_score(table_x=(GM_NODE_DEGREES, "in_degree + 1"),
-                               table_y=(GM_EGONET, "edge_cnt")):
+# helper function used by anomaly detection
+def log_log_lin_fit(table_x, table_y):
     from scipy.stats import linregress
     import numpy as np
     
     col_x = table_x[1]
     col_y = table_y[1]
-    print "Computing anomaly detection scores..."
-    print "According to power law between (%s)" % col_x + " and (%s)" % col_y
+    print "Log-log linear fitting between (%s)" % col_x + " and (%s)" % col_y
     cur = db_conn.cursor()
-    cur.execute("SELECT x.node_id, %s" % col_x + ", %s" % col_y +
+    cur.execute("SELECT x.node_id, x.%s" % col_x + ", y.%s" % col_y +
                 " FROM %s" % table_x[0] + " AS x, %s AS y" % table_y[0] +
-                " WHERE x.node_id = y.node_id")
+                " WHERE x.node_id = y.node_id" +
+                " ORDER BY x.node_id")
     id_x_y = cur.fetchall()
     node_id = [ele[0] for ele in id_x_y]
     val_x = np.array([np.log(float(ele[1])) for ele in id_x_y])
     val_y = np.array([np.log(float(ele[2])) for ele in id_x_y])
     (slope, intercept, r_value, p_value, stderr) = linregress(val_x, val_y)
-    print "Power law linear fitting done, r-squared = %s" % r_value
+    print "log-log linear fitting done, r-squared = %s" % r_value
     hor_dist = np.abs(val_x - (val_y - intercept) / slope)
     ver_dist = np.abs(val_y - (slope * val_x + intercept))
     
     # use the area trick
     score = hor_dist * ver_dist / (np.sqrt(hor_dist**2 + ver_dist**2))
-    list_score = zip(node_id, score)
+    cur.close()
+    return (node_id, score)
+
+# Anomaly detection score obtained by linear fitting on log-log scale
+def gm_anomaly_detection_score(unweighted):
+    print "Computing anomaly detection scores..."
+    cur = db_conn.cursor()
+    (node_id, score_en) = log_log_lin_fit((GM_NODE_DEGREES, "in_degree + 1"),
+                                          (GM_EGONET, "edge_cnt"))
+    if unweighted:
+        list_score = zip(node_id, score_en)
+    else:
+        (_, score_we) = log_log_lin_fit((GM_EGONET, "edge_cnt"),
+                                        (GM_EGONET, "wgt_sum"))
+        list_score = zip(node_id, score_en, score_we)
     gm_sql_table_drop_create(db_conn, GM_ANOM_SCORE,
-                            "node_id integer, score double precision")
+                             "node_id integer, " +
+                             "score_en double precision, " +
+                             "score_we double precision DEFAULT 0.0")
     cur.execute("INSERT INTO %s" % GM_ANOM_SCORE +
                 " VALUES %s" % str(list_score).replace('[','').replace(']',''))
     db_conn.commit()
@@ -1144,6 +1162,9 @@ def main():
                          The prior beliefs are expected to be centered around 0. i.e. positive \
                          nodes have priors >0, negative nodes <0 and unknown nodes 0. ')
     
+    parser.add_argument ('--unittest', dest='unittest', action='store_const', const=True, default=False,
+                         help='Unit tests are super slow on eigenvalue')
+    
     parser.add_argument ('--index', nargs=3, action='append', default=None,
                          help='Add an index on GM_TABLE. Format is --index name on cluster.'
                          ' Can be used multiple times.\n'
@@ -1206,20 +1227,26 @@ def main():
         
         # Tasks
         gm_connected_components(num_nodes)  # Connected components (timing)
-        gm_eigen(gm_param_eig_max_iter, num_nodes, gm_param_eig_thres1, gm_param_eig_thres2)     # (timing)
+        if not args.unittest:
+            gm_eigen(gm_param_eig_max_iter, num_nodes,
+                     gm_param_eig_thres1, gm_param_eig_thres2)     # (timing)
         gm_all_radius(num_nodes)      # (timing)
         if (args.belief_file):
-            gm_belief_propagation(args.belief_file, args.delimiter, args.undirected) # (timing)
-        gm_eigen_triangle_count()
+            gm_belief_propagation(args.belief_file, args.delimiter,
+                                  args.undirected) # (timing)
+        if not args.unittest:
+            gm_eigen_triangle_count()
         #gm_naive_triangle_count()
-        gm_anomaly_detection()
         
-        gm_anomaly_detection_score()
+        if not args.unittest:
+            # Anomaly detection tasks
+            gm_anomaly_detection()
+            gm_anomaly_detection_score(args.unweighted)
         
         print 'Time taken total:', time.time() - start_time
 
         # Save tables to disk
-        gm_save_tables(args.dest_dir, args.belief_file)
+        gm_save_tables(args.dest_dir, args.belief_file, args.unittest)
         
         gm_db_bubye(db_conn)
     except:

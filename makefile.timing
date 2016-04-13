@@ -1,0 +1,4 @@
+timing:
+	./util/start_server.bash
+	python gm_main.py --file `pwd`/${base_name}-nosharp.txt --dest_dir `pwd`/output/timing_play --delim ${delim} --unweighted --undirected ${index_setting_full} ${reorder_setting_full}
+	./util/stop_server.bash

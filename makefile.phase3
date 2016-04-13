@@ -1,0 +1,54 @@
+
+dataset1:
+	make stanford -f makefile.phase3 url="http://snap.stanford.edu/data/soc-Slashdot0811.txt.gz" delim="'	'" unweighted="--unweighted"
+dataset2:
+	make stanford -f makefile.phase3 url="http://snap.stanford.edu/data/soc-Epinions1.txt.gz" delim="'	'" unweighted="--unweighted"
+dataset3:
+	make stanford -f makefile.phase3 url="http://snap.stanford.edu/data/email-Enron.txt.gz" delim="'	'" unweighted="--unweighted"
+dataset4:
+	make stanford -f makefile.phase3 url="http://snap.stanford.edu/data/twitter_combined.txt.gz" delim="' '" unweighted="--unweighted"
+dataset5:
+	make stanford -f makefile.phase3 url="http://snap.stanford.edu/data/loc-brightkite_edges.txt.gz" delim="'	'" unweighted="--unweighted"
+dataset6:
+	make stanford -f makefile.phase3 url="http://snap.stanford.edu/data/bigdata/communities/com-amazon.ungraph.txt.gz" delim="'	'" unweighted="--unweighted"
+dataset7:
+	make stanford -f makefile.phase3 url="http://snap.stanford.edu/data/facebook_combined.txt.gz" delim="' '" unweighted="--unweighted"
+dataset8:
+	make stanford -f makefile.phase3 url="http://snap.stanford.edu/data/ca-AstroPh.txt.gz" delim="'	'" unweighted="--unweighted"
+dataset9:
+	make stanford -f makefile.phase3 url="http://snap.stanford.edu/data/p2p-Gnutella31.txt.gz" delim="'	'" unweighted="--unweighted"
+dataset10:
+	make koblenz -f makefile.phase3 url="http://konect.uni-koblenz.de/downloads/tsv/advogato.tar.bz2" delim="' '" unweighted=""
+dataset11:
+	make koblenz -f makefile.phase3 url="http://konect.uni-koblenz.de/downloads/tsv/moreno_names.tar.bz2" delim="' '" unweighted=""
+dataset12:
+	make koblenz -f makefile.phase3 url="http://konect.uni-koblenz.de/downloads/tsv/cit-HepPh.tar.bz2" delim="' '" unweighted="--unweighted"
+dataset13:
+	make koblenz -f makefile.phase3 url="http://konect.uni-koblenz.de/downloads/tsv/dblp-cite.tar.bz2" delim="' '" unweighted="--unweighted"
+dataset14:
+	make koblenz -f makefile.phase3 url="http://konect.uni-koblenz.de/downloads/tsv/cfinder-google.tar.bz2" delim="' '" unweighted="--unweighted"
+dataset15:
+	make koblenz -f makefile.phase3 url="http://konect.uni-koblenz.de/downloads/tsv/subelj_cora.tar.bz2" delim="' '" unweighted="--unweighted"
+
+stanford:
+	chmod a+rwx `pwd`
+	$(eval filename := $(shell basename ${url}))
+	$(eval nosuffix := $(basename $(basename ${filename})))
+	wget ${url}
+	gunzip -f ${filename}
+	grep -v "#" ${nosuffix}.txt > ${nosuffix}-preprocessed.txt
+	mkdir -p `pwd`/output/${nosuffix}
+	-python gm_main.py --file `pwd`/${nosuffix}-preprocessed.txt --dest_dir `pwd`/output/${nosuffix} --delim ${delim} ${unweighted} --undirected --index idx_src '(src_id)' False --index idx_dst '(dst_id)' True > `pwd`/output/${nosuffix}/${nosuffix}.out
+	rm ${nosuffix}-preprocessed.txt ${nosuffix}.txt
+
+koblenz:
+	chmod a+rwx `pwd`
+	$(eval filename := $(shell basename ${url}))
+	$(eval nosuffix := $(basename $(basename ${filename})))
+	wget ${url}
+	tar -vxjf ${filename}
+	-mv ${nosuffix}/out.${nosuffix}* ${nosuffix}/out.${nosuffix}
+	grep -v "%" ${nosuffix}/out.${nosuffix} | awk '{$$1=$$1};1' > ${nosuffix}-preprocessed
+	mkdir -p `pwd`/output/${nosuffix}
+	-python gm_main.py --file `pwd`/${nosuffix}-preprocessed --dest_dir `pwd`/output/${nosuffix} --delim ${delim} ${unweighted} --undirected --index idx_src '(src_id)' False --index idx_dst '(dst_id)' True > `pwd`/output/${nosuffix}/${nosuffix}.out
+	rm -r ${nosuffix}-preprocessed ${nosuffix} ${filename}

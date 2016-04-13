@@ -59,4 +59,3 @@ GM_SLASHBURN = "GM_SLASHBURN"
 # phase 3: anomaly detection score
 GM_ANOM_SCORE = "GM_ANOM_SCORE"
 
-

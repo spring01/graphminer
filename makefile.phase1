@@ -1,0 +1,33 @@
+unittest:
+	chmod a+rwx `pwd`
+	mkdir -p `pwd`/output/unittest1
+	python gm_main.py --file `pwd`/unit_tests/unittest1.txt --dest_dir `pwd`/output/unittest1 --unweighted --undirected --unittest
+	mkdir -p `pwd`/output/unittest2
+	python gm_main.py --file `pwd`/unit_tests/unittest2.txt --dest_dir `pwd`/output/unittest2 --unweighted --undirected --unittest
+	mkdir -p `pwd`/output/unittest3
+	python gm_main.py --file `pwd`/unit_tests/unittest3.txt --dest_dir `pwd`/output/unittest3 --unweighted --undirected --unittest
+	mkdir -p `pwd`/output/unittest4
+	python gm_main.py --file `pwd`/unit_tests/unittest4.txt --dest_dir `pwd`/output/unittest4 --unweighted --undirected --unittest
+	mkdir -p `pwd`/output/unittest5
+
+dataset1:
+	make stanford -f makefile.phase1 url="http://snap.stanford.edu/data/soc-Slashdot0811.txt.gz" delim="'	'" unweighted="--unweighted"
+dataset2:
+	make stanford -f makefile.phase1 url="http://snap.stanford.edu/data/soc-Epinions1.txt.gz" delim="'	'" unweighted="--unweighted"
+
+stanford:
+	chmod a+rwx `pwd`
+	$(eval filename := $(shell basename ${url}))
+	$(eval nosuffix := $(basename $(basename ${filename})))
+	wget ${url}
+	gunzip -f ${filename}
+	grep -v "#" ${nosuffix}.txt > ${nosuffix}-preprocessed.txt
+	mkdir -p `pwd`/output/${nosuffix}
+	-python gm_main.py --file `pwd`/${nosuffix}-preprocessed.txt --dest_dir `pwd`/output/${nosuffix} --delim ${delim} ${unweighted} --undirected > `pwd`/output/${nosuffix}/${nosuffix}.out
+	grep "Degeneracy" `pwd`/output/${nosuffix}/${nosuffix}.out > `pwd`/output/${nosuffix}/result
+	grep "^0," `pwd`/output/${nosuffix}/coreness.csv >> `pwd`/output/${nosuffix}/result
+	grep "^17," `pwd`/output/${nosuffix}/coreness.csv >> `pwd`/output/${nosuffix}/result
+	grep "^9422," `pwd`/output/${nosuffix}/coreness.csv >> `pwd`/output/${nosuffix}/result
+	grep "^18475," `pwd`/output/${nosuffix}/coreness.csv >> `pwd`/output/${nosuffix}/result
+	grep "^27763," `pwd`/output/${nosuffix}/coreness.csv >> `pwd`/output/${nosuffix}/result
+	rm ${nosuffix}-preprocessed.txt ${nosuffix}.txt
