@@ -88,10 +88,21 @@ def gm_save_tables (dest_dir, belief, unittest):
                                   os.path.join(dest_dir,"eigvec.csv"), ",");
         
         # anomaly detection table
-        gm_sql_save_table_to_file(db_conn, GM_EGONET, "node_id, edge_cnt, wgt_sum",
-                                  os.path.join(dest_dir,"egonet.csv"), ",");
+        gm_sql_save_table_to_file(db_conn, GM_RANK_DEGREE, "node_id, rank, in_degree",
+                                  os.path.join(dest_dir,"rankdegree.csv"), ",");
+        gm_sql_save_table_to_file(db_conn, GM_RANK_CORENESS, "node_id, rank, coreness",
+                                  os.path.join(dest_dir,"rankcoreness.csv"), ",");
+        gm_sql_save_table_to_file(db_conn, GM_RANK_PAGERANK, "node_id, rank, page_rank",
+                                  os.path.join(dest_dir,"rankpagerank.csv"), ",");
         gm_sql_save_table_to_file(db_conn, GM_ANOM_SCORE, "node_id, score_en, score_we",
                                   os.path.join(dest_dir,"anomscore.csv"), ",");
+        gm_sql_save_table_to_file(db_conn, GM_ANOM_SCORE_NAIVE, "node_id, score_deg, score_core, score_page",
+                                  os.path.join(dest_dir,"anomscorenaive.csv"), ",");
+        gm_sql_save_table_to_file(db_conn, GM_EGONET, "node_id, edge_cnt, wgt_sum",
+                                  os.path.join(dest_dir,"egonet.csv"), ",");
+        
+        
+        
     
                                   
 
@@ -828,7 +839,28 @@ def gm_anomaly_detection():
     db_conn.commit();
     print "Time taken = " + str(time.time()-start_time)
 
-# helper function used by anomaly detection
+
+# helper function used by anomaly detection; generate a table with prop vs rank
+def rank_prop_table(table_name, prop_name, rank_table_name):
+    cur = db_conn.cursor()
+    cur.execute("SELECT node_id, %s" % prop_name +
+                " FROM %s" % table_name +
+                " ORDER BY %s DESC" % prop_name)
+    sorted_nodes = cur.fetchall()
+    ranks = [float(num + 1) for num in range(len(sorted_nodes))]
+    prop = [float(node[1]) for node in sorted_nodes]
+    sorted_nodes = [node[0] for node in sorted_nodes]
+    rank_prop = zip(sorted_nodes, ranks, prop)
+    gm_sql_table_drop_create(db_conn, rank_table_name,
+                             "node_id integer, " +
+                             "rank double precision, " +
+                             "%s double precision" % prop_name)
+    cur.execute("INSERT INTO %s" % rank_table_name +
+                " VALUES %s" % str(rank_prop).replace('[','').replace(']',''))
+    db_conn.commit()
+
+# helper function used by anomaly detection; perform log-log linear fit
+# deviation is returned as ordered by node_id
 def log_log_lin_fit(table_x, table_y):
     from scipy.stats import linregress
     import numpy as np
@@ -843,27 +875,60 @@ def log_log_lin_fit(table_x, table_y):
                 " ORDER BY x.node_id")
     id_x_y = cur.fetchall()
     node_id = [ele[0] for ele in id_x_y]
-    val_x = np.array([np.log(float(ele[1])) for ele in id_x_y])
-    val_y = np.array([np.log(float(ele[2])) for ele in id_x_y])
+    val_x = np.array([np.log10(float(ele[1])) for ele in id_x_y])
+    val_y = np.array([np.log10(float(ele[2])) for ele in id_x_y])
     (slope, intercept, r_value, p_value, stderr) = linregress(val_x, val_y)
-    print "log-log linear fitting done, r-squared = %s" % r_value
+    print "    slope        =   %s" % slope
+    print "    intercept    =   %s" % intercept
+    print "    r-squared    =   %s" % r_value
     hor_dist = np.abs(val_x - (val_y - intercept) / slope)
     ver_dist = np.abs(val_y - (slope * val_x + intercept))
     
     # use the area trick
-    score = hor_dist * ver_dist / (np.sqrt(hor_dist**2 + ver_dist**2))
+    deviation = hor_dist * ver_dist / (np.sqrt(hor_dist**2 + ver_dist**2))
     cur.close()
-    return (node_id, score)
+    return (node_id, deviation)
+
+def gm_anomaly_detection_score_naive():
+    print "Computing naive anomaly detection scores..."
+    cur = db_conn.cursor()
+    
+    # power law: degree vs. rank(degree)
+    rank_prop_table(GM_NODE_DEGREES, "in_degree", GM_RANK_DEGREE)
+    (node_id, score_deg) = log_log_lin_fit((GM_RANK_DEGREE, "rank"),
+                                     (GM_RANK_DEGREE, "in_degree"))
+    
+    # power law: coreness vs. rank(coreness)
+    rank_prop_table(GM_NODE_CORENESS, "coreness", GM_RANK_CORENESS)
+    (_, score_core) = log_log_lin_fit((GM_RANK_CORENESS, "rank"),
+                                      (GM_RANK_CORENESS, "coreness"))
+    
+    # power law: pagerank vs. rank(pagerank)
+    rank_prop_table(GM_PAGERANK, "page_rank", GM_RANK_PAGERANK)
+    (_, score_page) = log_log_lin_fit((GM_RANK_PAGERANK, "rank"),
+                                      (GM_RANK_PAGERANK, "page_rank"))
+    naive_scores = zip(node_id, score_deg, score_core, score_page)
+    gm_sql_table_drop_create(db_conn, GM_ANOM_SCORE_NAIVE,
+                             "node_id integer, " +
+                             "score_deg double precision, " +
+                             "score_core double precision, " +
+                             "score_page double precision")
+    cur.execute("INSERT INTO %s" % GM_ANOM_SCORE_NAIVE +
+                " VALUES %s" % str(naive_scores).replace('[','').replace(']',''))
+    db_conn.commit()
 
 # Anomaly detection score obtained by linear fitting on log-log scale
 def gm_anomaly_detection_score(unweighted):
     print "Computing anomaly detection scores..."
     cur = db_conn.cursor()
+    
+    # power law: edge count vs. number of nodes (degree + 1) in egonet
     (node_id, score_en) = log_log_lin_fit((GM_NODE_DEGREES, "in_degree + 1"),
                                           (GM_EGONET, "edge_cnt"))
     if unweighted:
         list_score = zip(node_id, score_en)
     else:
+        # power law: sum of weights v.s. edge count in egonet
         (_, score_we) = log_log_lin_fit((GM_EGONET, "edge_cnt"),
                                         (GM_EGONET, "wgt_sum"))
         list_score = zip(node_id, score_en, score_we)
@@ -948,12 +1013,6 @@ def gm_node_coreness():
                             "node_id integer, coreness integer")
     cur.execute("INSERT INTO %s" % GM_NODE_CORENESS +
                 " VALUES %s" % str(list_L).replace('[','').replace(']',''))
-    
-    #~ cur.execute("SELECT node_id, coreness" +
-                #~ " FROM %s" % GM_NODE_CORENESS +
-                #~ " WHERE node_id = 0 OR node_id = 17 OR node_id = 9422 OR node_id = 18475 OR node_id = 27763" +
-                #~ " ORDER BY node_id")
-    #~ print cur.fetchall()
     db_conn.commit()
     cur.close()
 
@@ -1241,6 +1300,7 @@ def main():
         if not args.unittest:
             # Anomaly detection tasks
             gm_anomaly_detection()
+            gm_anomaly_detection_score_naive()
             gm_anomaly_detection_score(args.unweighted)
         
         print 'Time taken total:', time.time() - start_time
