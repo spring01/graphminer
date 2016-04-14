@@ -860,7 +860,7 @@ def rank_prop_table(table_name, prop_name, rank_table_name):
     db_conn.commit()
 
 # helper function used by anomaly detection; perform log-log linear fit
-# deviation is returned as ordered by node_id
+# score is returned as ordered by node_id
 def log_log_lin_fit(table_x, table_y):
     from scipy.stats import linregress
     import numpy as np
@@ -885,9 +885,9 @@ def log_log_lin_fit(table_x, table_y):
     ver_dist = np.abs(val_y - (slope * val_x + intercept))
     
     # use the area trick
-    deviation = hor_dist * ver_dist / (np.sqrt(hor_dist**2 + ver_dist**2))
+    score = hor_dist * ver_dist / (np.sqrt(hor_dist**2 + ver_dist**2))
     cur.close()
-    return (node_id, deviation)
+    return (node_id, score)
 
 def gm_anomaly_detection_score_naive():
     print "Computing naive anomaly detection scores..."
